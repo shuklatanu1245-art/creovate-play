@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Creovate Play - Instagram Reels & Real-Time Chat</title>
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="assets/logo.png">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            creo: {
+              purple: '#8B5CF6',
+              violet: '#7C3AED',
+              neon: '#A855F7',
+              gradientStart: '#9333EA',
+              gradientEnd: '#6366F1'
+            },
+            ig: {
+              gradient: 'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)',
+              pink: '#E1306C',
+              purple: '#C13584',
+              card: '#141416'
+            },
+            wa: {
+              green: '#25D366',
+              teal: '#128C7E',
+              darkBg: '#0b141a',
+              sidebarBg: '#111b21',
+              chatBg: '#0b141a',
+              bubbleMe: '#005c4b',
+              bubbleThem: '#202c33',
+              muted: '#8696a0'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- PeerJS for 100% Real-Time P2P WebRTC Chat with Real Persons -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+  <!-- Instagram Official Embed Script -->
+  <script async src="//www.instagram.com/embed.js"></script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-[#0b0f14] text-[#e9edef] h-screen overflow-hidden flex flex-col select-none">
+
+  <!-- ==================== HEADER BAR ==================== -->
+  <header class="h-16 border-b border-white/10 bg-[#0f1318]/95 backdrop-blur px-3 sm:px-5 flex items-center justify-between shrink-0 z-40 gap-3">
+    <!-- Brand / Logo -->
+    <div class="flex items-center gap-2.5 cursor-pointer" onclick="switchView('reels')">
+      <img 
+        src="assets/logo.png" 
+        alt="Creovate Play" 
+        class="w-9 h-9 rounded-xl object-cover shadow-lg shadow-purple-500/30 border border-purple-500/40 hover:scale-105 transition"
+      />
+      <div>
+        <div class="flex items-center font-black tracking-tight text-lg leading-tight">
+          <span class="text-white">Creovate</span><span class="text-purple-400 ml-1">Play</span>
+        </div>
+        <div class="flex items-center gap-1.5 text-[10px] text-gray-400">
+          <span class="bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent font-bold">Instagram Reels</span>
+          <span>•</span>
+          <span class="text-emerald-400 font-semibold">Real Chat</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: Real-Time Connection Hub -->
+    <div class="flex items-center gap-2 max-w-md w-full justify-center">
+      <!-- My Creovate ID Pill -->
+      <div 
+        onclick="copyMyId()" 
+        title="Click to copy your unique ID to share with a friend"
+        class="cursor-pointer flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 transition"
+      >
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span class="text-gray-400">Your ID:</span>
+        <span id="my-peer-id" class="font-mono font-bold text-white text-xs">Connecting...</span>
+        <i data-lucide="copy" class="w-3.5 h-3.5 text-gray-400 hover:text-white"></i>
+      </div>
+
+      <!-- Copy Direct Invite Link -->
+      <button 
+        onclick="copyInviteLink()" 
+        title="Share this link with a friend to chat in real-time"
+        class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition"
+      >
+        <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+        <span>Invite Friend</span>
+      </button>
+
+      <!-- Connect to Friend Button -->
+      <button 
+        onclick="openConnectModal()" 
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/30 hover:bg-purple-600/40 text-purple-300 border border-purple-500/40 text-xs font-semibold transition"
+      >
+        <i data-lucide="link-2" class="w-3.5 h-3.5"></i>
+        <span>Connect</span>
+      </button>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="flex items-center gap-2">
+      <!-- Add Any Instagram Reel Button -->
+      <button 
+        onclick="openAddReelModal()" 
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 text-white text-xs font-bold shadow-md shadow-pink-500/20 hover:opacity-90 transition"
+      >
+        <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+        <span class="hidden md:inline">+ Add Reel</span>
+      </button>
+
+      <!-- Dual Mode Toggle (Desktop) -->
+      <button 
+        id="dual-mode-btn" 
+        onclick="toggleDualMode()" 
+        title="Split View (Instagram Reels + Real Chat side-by-side)"
+        class="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 text-xs font-medium transition"
+      >
+        <i data-lucide="columns-2" class="w-3.5 h-3.5 text-purple-400"></i>
+        <span id="dual-mode-label">Dual View</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== MAIN CONTENT AREA ==================== -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- DESKTOP LEFT SIDEBAR -->
+    <aside class="hidden md:flex flex-col w-20 lg:w-60 border-r border-white/10 bg-[#0f141a] shrink-0 p-3 justify-between">
+      <div class="space-y-1.5">
+        <!-- Reels Feed Tab -->
+        <button 
+          id="tab-btn-reels" 
+          onclick="switchView('reels')" 
+          class="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-semibold transition text-white bg-gradient-to-r from-pink-600/20 to-purple-600/20 border border-pink-500/30 shadow-sm"
+        >
+          <div class="w-6 h-6 rounded-lg bg-gradient-to-tr from-yellow-500 via-pink-500 to-purple-600 flex items-center justify-center shrink-0">
+            <i data-lucide="instagram" class="w-3.5 h-3.5 text-white"></i>
+          </div>
+          <span class="hidden lg:inline">Instagram Reels</span>
+        </button>
+
+        <!-- Real Persons Chat Tab -->
+        <button 
+          id="tab-btn-chat" 
+          onclick="switchView('chat')" 
+          class="w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-sm font-medium transition text-gray-400 hover:text-white hover:bg-white/5"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+              <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+            </div>
+            <span class="hidden lg:inline">Real Person Chat</span>
+          </div>
+          <span id="real-peer-badge" class="hidden lg:inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        </button>
+      </div>
+
+      <!-- Quick Friend Status Box -->
+      <div class="hidden lg:block p-3.5 rounded-2xl bg-white/5 border border-white/5 text-xs space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="font-bold text-gray-300">Live Peer Status</span>
+          <span id="p2p-status-indicator" class="flex items-center gap-1 text-[11px] text-amber-400">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+            Waiting for peer
+          </span>
+        </div>
+        <p class="text-[11px] text-gray-400 leading-normal" id="p2p-info-text">
+          Friend ko apna ID share karein ya invite link bhejkar instantly connect karein!
+        </p>
+      </div>
+    </aside>
+
+    <!-- MAIN VIEW CONTAINER -->
+    <main id="main-viewport" class="flex-1 flex overflow-hidden relative">
+
+      <!-- ==================== VIEW 1: INSTAGRAM REELS & VIDEOS ==================== -->
+      <section id="view-reels" class="flex-1 flex flex-col overflow-y-auto bg-[#0b0f14] p-3 sm:p-5">
+        
+        <!-- Top Reels Action Banner -->
+        <div class="mb-4 p-4 rounded-2xl bg-gradient-to-r from-pink-950/40 via-[#161a22] to-purple-950/40 border border-pink-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <span class="px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-400 text-[10px] font-bold uppercase tracking-wider border border-pink-500/30">
+                Instagram Live Feed
+              </span>
+              <span class="text-xs text-gray-400">• Linked directly to Instagram</span>
+            </div>
+            <h2 class="text-lg sm:text-xl font-bold text-white">Watch Reels & Chat in Picture-in-Picture</h2>
+            <p class="text-xs text-gray-400 mt-0.5">Click any reel to play, minimize to corner, or send directly to your connected friend!</p>
+          </div>
+
+          <button 
+            onclick="openAddReelModal()" 
+            class="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-pink-600/30 hover:opacity-90 transition shrink-0"
+          >
+            <i data-lucide="link" class="w-4 h-4"></i>
+            <span>+ Link Any Instagram Reel</span>
+          </button>
+        </div>
+
+        <!-- Category Filters -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-3 mb-4 shrink-0 no-scrollbar" id="category-chips-container">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Instagram Reels Grid -->
+        <div id="reels-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-5 pb-24">
+          <!-- Populated by JS with Instagram Reels -->
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 2: REAL PERSON CHAT (WHATSAPP CLEAN) ==================== -->
+      <section id="view-chat" class="hidden flex-1 flex flex-col overflow-hidden bg-[#0b141a] chat-pattern-bg relative">
+        
+        <!-- Live Chat Header -->
+        <div class="h-16 border-b border-white/10 bg-[#111b21] px-4 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-3">
+            <div class="relative">
+              <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-emerald-500 flex items-center justify-center font-bold text-white text-sm">
+                <i data-lucide="user" class="w-5 h-5 text-white"></i>
+              </div>
+              <span id="header-conn-status-dot" class="absolute bottom-0 right-0 w-3 h-3 bg-amber-400 rounded-full border-2 border-[#111b21]"></span>
+            </div>
+            <div>
+              <h3 id="connected-person-name" class="font-bold text-white text-sm flex items-center gap-2">
+                Real Person Chat
+              </h3>
+              <p id="connected-person-status" class="text-xs text-gray-400">
+                Share your ID or enter friend's ID to begin chatting
+              </p>
+            </div>
+          </div>
+
+          <!-- Chat Tools -->
+          <div class="flex items-center gap-2">
+            <button 
+              onclick="openConnectModal()" 
+              title="Connect with another friend"
+              class="px-3 py-1.5 text-xs font-semibold rounded-xl bg-purple-600/20 text-purple-300 border border-purple-500/30 hover:bg-purple-600/30 transition flex items-center gap-1.5"
+            >
+              <i data-lucide="users" class="w-3.5 h-3.5"></i>
+              <span class="hidden sm:inline">Change Peer</span>
+            </button>
+            <button 
+              onclick="openShareReelToChatModal()" 
+              title="Send Instagram Reel in this Chat"
+              class="px-3 py-1.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-pink-600/30 to-purple-600/30 text-pink-300 border border-pink-500/30 hover:opacity-90 transition flex items-center gap-1.5"
+            >
+              <i data-lucide="film" class="w-3.5 h-3.5"></i>
+              <span>Attach Reel</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Connection Banner if not connected -->
+        <div id="unconnected-helper-banner" class="p-4 m-4 rounded-2xl bg-[#151f28] border border-white/10 text-xs text-gray-300 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <i data-lucide="radio" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h4 class="font-bold text-white text-sm">Real-Time P2P Connection Ready</h4>
+              <p class="text-gray-400 text-xs">Apne friend ko invite link bhejein ya dusre browser tab me open karke live test karein!</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="copyInviteLink()" class="px-3.5 py-1.5 rounded-lg bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-600 transition">
+              Copy Invite Link
+            </button>
+            <button onclick="openConnectModal()" class="px-3.5 py-1.5 rounded-lg bg-white/10 text-white font-semibold text-xs hover:bg-white/20 transition">
+              Enter Friend's ID
+            </button>
+          </div>
+        </div>
+
+        <!-- Messages Scroll Container -->
+        <div id="chat-messages-container" class="flex-1 overflow-y-auto p-4 space-y-3">
+          <!-- Messages will appear here -->
+        </div>
+
+        <!-- Typing Indicator -->
+        <div id="typing-indicator" class="hidden px-4 py-1 text-xs text-emerald-400 italic flex items-center gap-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+          <span>Friend is typing...</span>
+        </div>
+
+        <!-- Input Bar (Clean WhatsApp Style) -->
+        <div class="p-3 bg-[#111b21] border-t border-white/10 flex items-center gap-2 shrink-0">
+          <!-- Attach Instagram Reel -->
+          <button 
+            onclick="openShareReelToChatModal()" 
+            title="Attach & Send Instagram Reel" 
+            class="p-2.5 text-pink-400 hover:text-pink-300 hover:bg-pink-500/10 rounded-full transition"
+          >
+            <i data-lucide="instagram" class="w-5 h-5"></i>
+          </button>
+
+          <!-- Text Message Input -->
+          <input 
+            id="chat-message-input" 
+            type="text" 
+            placeholder="Type a real-time message or paste Instagram link..."
+            class="flex-1 bg-[#2a3942] border-0 text-white placeholder-gray-400 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500"
+          />
+
+          <!-- Send Button -->
+          <button 
+            id="send-message-btn" 
+            onclick="sendRealMessage()"
+            class="p-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-90 text-white rounded-full transition shadow-md shadow-purple-500/20"
+          >
+            <i data-lucide="send" class="w-4 h-4 fill-white"></i>
+          </button>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ==================== FLOATING MINI-PLAYER (PICTURE-IN-PICTURE) ==================== -->
+  <div id="floating-mini-player" class="hidden docked-bottom-right">
+    <!-- Header bar on mini-player -->
+    <div class="px-3 py-2 bg-[#12181f]/95 border-b border-white/10 flex items-center justify-between">
+      <div class="flex items-center gap-2 overflow-hidden">
+        <span class="w-2 h-2 rounded-full bg-pink-500 animate-pulse shrink-0"></span>
+        <span id="mini-player-title" class="text-xs font-semibold text-white truncate max-w-[200px]">Instagram Reel Playing...</span>
+      </div>
+      <div class="flex items-center gap-1 text-gray-400">
+        <!-- Close Mini-player -->
+        <button onclick="closeFloatingPlayer()" title="Close Player" class="p-1 hover:text-red-400 rounded hover:bg-white/10">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Instagram IFrame Container -->
+    <div class="relative bg-black aspect-[9/16] max-h-[380px] w-full flex items-center justify-center overflow-hidden">
+      <iframe 
+        id="mini-reel-iframe" 
+        src="" 
+        class="w-full h-full border-0"
+        allowfullscreen 
+        scrolling="no"
+        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+      ></iframe>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 1: CONNECT WITH REAL PERSON ==================== -->
+  <div id="connect-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-[#12181f] border border-white/10 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-white/10 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <i data-lucide="radio" class="w-4 h-4"></i>
+          </div>
+          <h3 class="font-bold text-white text-base">Connect with Real Person</h3>
+        </div>
+        <button onclick="closeConnectModal()" class="text-gray-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- My ID Display -->
+      <div class="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
+        <span class="text-xs text-gray-400 font-medium">Your Creovate Peer ID:</span>
+        <div class="flex items-center justify-between">
+          <span id="modal-my-id" class="font-mono text-sm font-bold text-emerald-400 select-all">Connecting...</span>
+          <button onclick="copyMyId()" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold">
+            Copy
+          </button>
+        </div>
+      </div>
+
+      <!-- Connect to Friend by ID -->
+      <div class="space-y-2">
+        <label class="text-xs font-semibold text-gray-300">Enter Friend's Creovate ID:</label>
+        <div class="flex gap-2">
+          <input 
+            id="friend-peer-input" 
+            type="text" 
+            placeholder="e.g. creo-xyz123"
+            class="flex-1 bg-[#1a232d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 font-mono"
+          />
+          <button 
+            onclick="connectToFriendFromModal()" 
+            class="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition shadow"
+          >
+            Connect
+          </button>
+        </div>
+      </div>
+
+      <!-- Multi-tab / Direct Link Helper -->
+      <div class="pt-2 border-t border-white/10 flex items-center justify-between text-xs">
+        <span class="text-gray-400">Want to test right now?</span>
+        <button onclick="testInNewTab()" class="text-purple-400 hover:text-purple-300 font-semibold underline">
+          Open 2nd Tab to Chat with yourself
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 2: ADD ANY INSTAGRAM REEL ==================== -->
+  <div id="add-reel-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-[#12181f] border border-white/10 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-white/10 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-pink-500/20 text-pink-400 flex items-center justify-center">
+            <i data-lucide="instagram" class="w-4 h-4"></i>
+          </div>
+          <h3 class="font-bold text-white text-base">Link Any Instagram Reel</h3>
+        </div>
+        <button onclick="closeAddReelModal()" class="text-gray-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-gray-400">
+        Instagram app ya browser se kisi bhi Reel ya Video ka link copy karke yahan paste karein:
+      </p>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-gray-300 block mb-1">Instagram Link:</label>
+          <input 
+            id="new-reel-url-input" 
+            type="text" 
+            placeholder="https://www.instagram.com/reel/C5nQ0q0L7f0/ ..."
+            class="w-full bg-[#1a232d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-pink-500"
+          />
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-gray-300 block mb-1">Title / Caption (Optional):</label>
+          <input 
+            id="new-reel-title-input" 
+            type="text" 
+            placeholder="e.g. Crazy moments, funny comedy reel..."
+            class="w-full bg-[#1a232d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-pink-500"
+          />
+        </div>
+
+        <button 
+          onclick="addInstagramReel()" 
+          class="w-full py-2.5 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:opacity-90 text-white text-xs font-bold transition shadow-lg shadow-pink-600/20"
+        >
+          Add to Creovate Play Feed
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 3: SHARE REEL TO CHAT ==================== -->
+  <div id="share-reel-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-[#12181f] border border-white/10 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-white/10 pb-3">
+        <h3 class="font-bold text-white flex items-center gap-2">
+          <i data-lucide="share-2" class="w-5 h-5 text-pink-400"></i>
+          Select Reel to Send in Chat
+        </h3>
+        <button onclick="closeShareReelModal()" class="text-gray-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div id="share-reels-picker-list" class="space-y-2 max-h-64 overflow-y-auto">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MOBILE BOTTOM NAVIGATION ==================== -->
+  <nav class="md:hidden h-14 bg-[#111b21] border-t border-white/10 flex items-center justify-around shrink-0 z-40">
+    <button onclick="switchView('reels')" id="mobile-tab-reels" class="flex flex-col items-center gap-0.5 text-pink-400">
+      <i data-lucide="instagram" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium">Reels</span>
+    </button>
+    <button onclick="switchView('chat')" id="mobile-tab-chat" class="flex flex-col items-center gap-0.5 text-gray-400 relative">
+      <i data-lucide="message-circle" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium">Real Chat</span>
+      <span class="absolute top-0 right-2 w-2 h-2 rounded-full bg-emerald-500"></span>
+    </button>
+    <button onclick="openConnectModal()" class="flex flex-col items-center gap-0.5 text-gray-400">
+      <i data-lucide="user-plus" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium">Invite</span>
+    </button>
+  </nav>
+
+  <!-- Scripts -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
