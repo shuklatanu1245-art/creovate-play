@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Crochit - Home, Feed, Chat & Profile</title>
+  <title>Crochit - Videos, Reels, Real-Time Chat & Profile</title>
   
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="assets/logo.png">
@@ -20,19 +20,9 @@
               purple: '#8B5CF6',
               violet: '#7C3AED',
               neon: '#A855F7',
-              dark: '#0c0f17',
-              card: '#131822',
+              dark: '#090c10',
+              card: '#121822',
               border: '#1f2633'
-            },
-            yt: {
-              red: '#FF0000',
-              card: '#141416'
-            },
-            ig: {
-              pink: '#E1306C',
-              purple: '#C13584',
-              orange: '#F56040',
-              card: '#141418'
             },
             wa: {
               green: '#25D366',
@@ -54,7 +44,7 @@
   <!-- PeerJS for Real-Time P2P Chat -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 
-  <!-- Supabase JS Client for Real Cloud Database & Auth -->
+  <!-- Supabase JS Client for Cloud Database & Auth -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <!-- Custom Styles -->
@@ -76,23 +66,28 @@
           <span class="text-white">Cro</span><span class="text-purple-400">chit</span>
         </div>
         <span id="header-active-tab-label" class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
-          Home • YouTube Long Videos
+          Home • Long Videos
         </span>
       </div>
     </div>
 
-    <!-- Center Search Bar (Active on Home page) -->
-    <div id="header-search-container" class="flex-1 max-w-md mx-3 sm:mx-6">
+    <!-- Center Search Bar (Real Search with button) -->
+    <div id="header-search-container" class="flex-1 max-w-lg mx-3 sm:mx-6">
       <div class="relative flex items-center">
         <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-3.5 pointer-events-none"></i>
         <input 
           id="home-video-search" 
           type="text" 
-          placeholder="Search long videos, podcasts, tutorials..."
-          class="w-full bg-[#161c24] border border-white/10 text-xs sm:text-sm rounded-full pl-9 pr-8 py-2 focus:outline-none focus:border-red-500 text-gray-200 placeholder-gray-500 transition"
+          placeholder="Search long videos, podcasts, topics, creators..."
+          class="w-full bg-[#161c24] border border-white/10 text-xs sm:text-sm rounded-full pl-9 pr-24 py-2 focus:outline-none focus:border-purple-500 text-gray-200 placeholder-gray-500 transition"
         />
-        <button id="clear-search-btn" onclick="clearHomeSearch()" class="hidden absolute right-3 text-gray-400 hover:text-white">
-          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        <!-- Real Search Button -->
+        <button 
+          id="execute-search-btn" 
+          onclick="executeHomeSearch()" 
+          class="absolute right-1 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-bold hover:opacity-90 transition shadow flex items-center gap-1"
+        >
+          <span>Search</span>
         </button>
       </div>
     </div>
@@ -133,26 +128,26 @@
     <!-- DESKTOP LEFT NAVIGATION SIDEBAR (4 TABS) -->
     <aside class="hidden md:flex flex-col w-20 lg:w-56 border-r border-white/10 bg-[#0d1117] shrink-0 p-3 justify-between">
       <div class="space-y-2">
-        <!-- 1. HOME TAB (YouTube Long Videos) -->
+        <!-- 1. HOME TAB (Long Videos) -->
         <button 
           id="sidebar-tab-home" 
           onclick="switchMainTab('home')" 
-          class="w-full flex items-center gap-3.5 px-3.5 py-3 rounded-2xl text-sm font-semibold transition text-white bg-red-600/20 border border-red-500/30 shadow-sm"
+          class="w-full flex items-center gap-3.5 px-3.5 py-3 rounded-2xl text-sm font-semibold transition text-white bg-purple-600/20 border border-purple-500/30 shadow-sm"
         >
-          <div class="w-6 h-6 rounded-lg bg-red-600 text-white flex items-center justify-center shrink-0">
+          <div class="w-6 h-6 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0">
             <i data-lucide="play" class="w-3.5 h-3.5 fill-white ml-0.5"></i>
           </div>
-          <span class="hidden lg:inline">Home (YouTube)</span>
+          <span class="hidden lg:inline">Home (Videos)</span>
         </button>
 
-        <!-- 2. FEED TAB (Instagram Reels) -->
+        <!-- 2. FEED TAB (Reels Vertical Feed) -->
         <button 
           id="sidebar-tab-feed" 
           onclick="switchMainTab('feed')" 
           class="w-full flex items-center gap-3.5 px-3.5 py-3 rounded-2xl text-sm font-medium transition text-gray-400 hover:text-white hover:bg-white/5"
         >
-          <div class="w-6 h-6 rounded-lg bg-gradient-to-tr from-yellow-500 via-pink-500 to-purple-600 flex items-center justify-center shrink-0">
-            <i data-lucide="instagram" class="w-3.5 h-3.5 text-white"></i>
+          <div class="w-6 h-6 rounded-lg bg-gradient-to-tr from-pink-600 to-purple-600 flex items-center justify-center shrink-0">
+            <i data-lucide="zap" class="w-3.5 h-3.5 text-white"></i>
           </div>
           <span class="hidden lg:inline">Feed (Reels)</span>
         </button>
@@ -185,14 +180,14 @@
         </button>
       </div>
 
-      <!-- Floating PiP info box -->
+      <!-- Feature info card -->
       <div class="hidden lg:block p-3.5 rounded-2xl bg-white/5 border border-white/5 text-xs text-gray-400 space-y-1.5">
         <div class="flex items-center gap-1.5 text-white font-bold text-xs">
           <i data-lucide="sparkles" class="w-3.5 h-3.5 text-purple-400"></i>
-          <span>In-App Player</span>
+          <span>Native Platform</span>
         </div>
         <p class="text-[11px] leading-relaxed">
-          YouTube & Instagram videos app ke andar hi play hoti hain. Bahar redirect nahi hoti!
+          Unlimited video streaming aur vertical reels scroll. Sabhi videos 100% isi app me chalti hain!
         </p>
       </div>
     </aside>
@@ -200,20 +195,20 @@
     <!-- VIEWPORT FOR THE 4 PAGES -->
     <main id="main-viewport" class="flex-1 flex overflow-hidden relative">
 
-      <!-- ==================== PAGE 1: HOME (YOUTUBE LONG VIDEOS ONLY) ==================== -->
-      <section id="page-home" class="flex-1 flex flex-col overflow-y-auto bg-[#090c10] p-3 sm:p-6 pb-24">
+      <!-- ==================== PAGE 1: HOME (LONG VIDEOS ONLY - UNLIMITED INFINITE SCROLL) ==================== -->
+      <section id="page-home" class="flex-1 flex flex-col overflow-y-auto bg-[#090c10] p-3 sm:p-6 pb-28">
         <!-- Home Header Banner -->
-        <div class="mb-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-red-950/40 via-[#131720] to-purple-950/30 border border-red-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+        <div class="mb-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-950/40 via-[#131720] to-[#161c28] border border-purple-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
           <div>
             <div class="flex items-center gap-2 mb-1">
-              <span class="px-2.5 py-0.5 rounded-full bg-red-600/20 text-red-400 text-[10px] font-bold uppercase tracking-wider border border-red-500/30 flex items-center gap-1">
-                <i data-lucide="youtube" class="w-3 h-3"></i>
+              <span class="px-2.5 py-0.5 rounded-full bg-purple-600/20 text-purple-300 text-[10px] font-bold uppercase tracking-wider border border-purple-500/30 flex items-center gap-1">
+                <i data-lucide="play" class="w-3 h-3 fill-purple-400"></i>
                 <span>Long Videos Only</span>
               </span>
-              <span class="text-xs text-gray-400">• Plays 100% Inside Crochit</span>
+              <span class="text-xs text-gray-400">• High-Definition Native Stream</span>
             </div>
-            <h1 class="text-lg sm:text-2xl font-black text-white">Trending Long-Form Videos & Podcasts</h1>
-            <p class="text-xs text-gray-400 mt-1">Full podcasts, tutorials, documentaries, and chill streams. No shorts, only quality long videos.</p>
+            <h1 class="text-lg sm:text-2xl font-black text-white">Full-Length Shows, Tutorials & Podcasts</h1>
+            <p class="text-xs text-gray-400 mt-1">Scroll karte jayein — unlimited videos aati rahengi! Kisi video par click karein aur isi app me dekhein.</p>
           </div>
         </div>
 
@@ -222,40 +217,23 @@
           <!-- Populated by JS -->
         </div>
 
-        <!-- YouTube Video Grid -->
-        <div id="youtube-videos-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <!-- Long Videos Grid -->
+        <div id="long-videos-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           <!-- Populated by JS -->
+        </div>
+
+        <!-- Infinite Scroll Loader for Home -->
+        <div id="home-infinite-loader" class="py-8 text-center text-xs text-gray-500 flex items-center justify-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-purple-500 animate-ping"></span>
+          <span>Loading more videos... Scroll down for unlimited streaming</span>
         </div>
       </section>
 
-      <!-- ==================== PAGE 2: FEED (INSTAGRAM REELS ONLY) ==================== -->
-      <section id="page-feed" class="hidden flex-1 flex flex-col overflow-y-auto bg-[#090c10] p-3 sm:p-6 pb-24">
-        <!-- Feed Header Banner -->
-        <div class="mb-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-pink-950/40 via-[#131720] to-purple-950/40 border border-pink-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
-          <div>
-            <div class="flex items-center gap-2 mb-1">
-              <span class="px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-400 text-[10px] font-bold uppercase tracking-wider border border-pink-500/30 flex items-center gap-1">
-                <i data-lucide="instagram" class="w-3 h-3"></i>
-                <span>Instagram Feed</span>
-              </span>
-              <span class="text-xs text-gray-400">• Vertical Reels & Clips</span>
-            </div>
-            <h1 class="text-lg sm:text-2xl font-black text-white">Instagram Reels in Crochit</h1>
-            <p class="text-xs text-gray-400 mt-1">Watch reels directly inside the app, add any custom reel link, or send to chat!</p>
-          </div>
-
-          <button 
-            onclick="openAddReelModal()" 
-            class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-pink-600/30 hover:opacity-90 transition shrink-0"
-          >
-            <i data-lucide="plus" class="w-4 h-4"></i>
-            <span>+ Link Any Instagram Reel</span>
-          </button>
-        </div>
-
-        <!-- Reels Grid -->
-        <div id="instagram-reels-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          <!-- Populated by JS with Instagram Reels -->
+      <!-- ==================== PAGE 2: FEED (VERTICAL SNAP-SCROLL REELS - UNLIMITED) ==================== -->
+      <section id="page-feed" class="hidden flex-1 overflow-hidden bg-black flex justify-center items-center relative">
+        <!-- Vertical Snap-Scroll Reel Stream Container -->
+        <div id="reels-snap-container" class="reels-vertical-container w-full max-w-md h-full relative">
+          <!-- Populated by JS with infinite vertical snap reels -->
         </div>
       </section>
 
@@ -292,11 +270,11 @@
             </button>
             <button 
               onclick="openAttachMediaModal()" 
-              title="Attach YouTube video or Instagram reel into chat"
+              title="Attach video or reel into chat"
               class="px-3 py-1.5 text-xs font-semibold rounded-xl bg-purple-600/30 text-purple-300 border border-purple-500/40 hover:bg-purple-600/40 transition flex items-center gap-1.5"
             >
               <i data-lucide="paperclip" class="w-3.5 h-3.5"></i>
-              <span>Attach Media</span>
+              <span>Attach Video</span>
             </button>
           </div>
         </div>
@@ -319,7 +297,7 @@
           <input 
             id="chat-message-input" 
             type="text" 
-            placeholder="Type a message or paste a video link..."
+            placeholder="Type a message or share a video link..."
             class="flex-1 bg-[#2a3942] border-0 text-white placeholder-gray-400 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-purple-500"
           />
 
@@ -360,7 +338,7 @@
               </div>
               <p id="profile-display-email" class="text-xs text-gray-400 font-mono">alex@crochit.app</p>
               <p id="profile-display-bio" class="text-xs text-gray-300 pt-1 leading-relaxed">
-                Exploring tech, lofi music, and connecting on Crochit 🚀
+                Watching videos, reels, and connecting on Crochit 🚀
               </p>
               <div class="flex items-center justify-center sm:justify-start gap-4 pt-3 text-xs text-gray-400">
                 <span>Joined: <strong id="profile-joined-date" class="text-gray-200">November 2026</strong></span>
@@ -370,7 +348,7 @@
             </div>
           </div>
 
-          <!-- Edit Profile Card (Username & Password Update in Database) -->
+          <!-- Edit Profile Card (Username & Password In-Place Database Update) -->
           <div class="p-5 sm:p-6 rounded-2xl bg-[#131822] border border-white/10 shadow-xl space-y-4">
             <div class="border-b border-white/10 pb-3">
               <h3 class="text-base font-bold text-white flex items-center gap-2">
@@ -431,7 +409,7 @@
             </form>
           </div>
 
-          <!-- DATABASE CONNECTION & AUTH GUIDE (Supabase & Firebase) -->
+          <!-- DATABASE CONNECTION & AUTH GUIDE (Supabase Cloud Config) -->
           <div class="p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-[#161b26] to-[#121620] border border-emerald-500/30 shadow-xl space-y-4">
             <div class="flex items-start justify-between gap-3 border-b border-white/10 pb-3">
               <div>
@@ -458,7 +436,7 @@
               <ol class="list-decimal list-inside space-y-1 text-gray-400 pl-1">
                 <li><a href="https://supabase.com" target="_blank" class="text-emerald-400 underline font-semibold">supabase.com</a> par jaakar free account banayein aur naya project create karein.</li>
                 <li>Project Settings -> <strong>API</strong> section se apna <strong>Project URL</strong> aur <strong>Anon Key</strong> copy karein.</li>
-                <li>Neeche diye gaye inputs me paste karein ya Vercel Environment Variables me set karein.</li>
+                <li>Neeche diye gaye inputs me paste karein aur "Save Cloud Database" dabayein.</li>
                 <li>Iske baad users worldwide login/signup kar sakenge aur profile updates directly cloud database me synchronize hongi!</li>
               </ol>
             </div>
@@ -511,124 +489,72 @@
     </main>
   </div>
 
-  <!-- ==================== FLOATING MINI-PLAYER (PIP FOR BOTH YT & REELS) ==================== -->
+  <!-- ==================== FLOATING MINI-PLAYER (PIP FOR BOTH VIDEOS & REELS) ==================== -->
   <div id="floating-mini-player" class="hidden docked-bottom-right">
     <div class="px-3 py-2 bg-[#12181f]/95 border-b border-white/10 flex items-center justify-between">
       <div class="flex items-center gap-2 overflow-hidden">
-        <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0"></span>
-        <span id="mini-player-title" class="text-xs font-semibold text-white truncate max-w-[200px]">Video Playing...</span>
+        <span class="w-2 h-2 rounded-full bg-purple-500 animate-pulse shrink-0"></span>
+        <span id="mini-player-title" class="text-xs font-semibold text-white truncate max-w-[200px]">Playing...</span>
       </div>
       <button onclick="closeFloatingPlayer()" title="Close Player" class="p-1 hover:text-red-400 text-gray-400 rounded hover:bg-white/10">
         <i data-lucide="x" class="w-3.5 h-3.5"></i>
       </button>
     </div>
 
-    <!-- Container for either YouTube iframe or Instagram Reel iframe -->
+    <!-- Container for Native Video Playback -->
     <div id="mini-player-frame-container" class="relative bg-black aspect-video w-full flex items-center justify-center overflow-hidden">
-      <!-- Injected by JS -->
+      <video id="mini-player-video" class="w-full h-full object-contain" controls autoplay playsinline></video>
     </div>
   </div>
 
-  <!-- ==================== IN-APP YOUTUBE VIDEO MODAL (100% IN-APP PLAYBACK) ==================== -->
-  <div id="youtube-video-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-2 sm:p-4 animate-fade-in">
+  <!-- ==================== FULL IN-APP VIDEO PLAYER MODAL (100% NATIVE IN-APP) ==================== -->
+  <div id="video-player-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-2 sm:p-4 animate-fade-in">
     <div class="bg-[#121820] border border-white/10 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
       <!-- Modal Header -->
       <div class="px-4 py-3 bg-[#18202c] border-b border-white/10 flex items-center justify-between shrink-0">
         <div class="flex items-center gap-2">
-          <div class="w-6 h-6 rounded-md bg-red-600 flex items-center justify-center text-white font-bold text-xs">
+          <div class="w-6 h-6 rounded-md bg-purple-600 flex items-center justify-center text-white font-bold text-xs">
             <i data-lucide="play" class="w-3 h-3 fill-white ml-0.5"></i>
           </div>
-          <span class="text-xs font-bold text-gray-300 uppercase tracking-wider">Crochit In-App Player</span>
+          <span class="text-xs font-bold text-gray-300 uppercase tracking-wider">Crochit Video Player</span>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="minimizeYtToMiniPlayer()" title="Minimize to Corner (Watch while chatting)" class="px-2.5 py-1 text-xs rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 flex items-center gap-1.5 transition">
+          <button onclick="minimizeModalVideoToMini()" title="Float in corner while chatting" class="px-2.5 py-1 text-xs rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 flex items-center gap-1.5 transition">
             <i data-lucide="minimize-2" class="w-3.5 h-3.5"></i>
             <span>Float & Chat</span>
           </button>
-          <button onclick="closeYoutubeModal()" class="p-1 text-gray-400 hover:text-white rounded-lg">
+          <button onclick="closeVideoModal()" class="p-1 text-gray-400 hover:text-white rounded-lg">
             <i data-lucide="x" class="w-5 h-5"></i>
           </button>
         </div>
       </div>
 
-      <!-- Modal Body (IFrame Player + Video Info) -->
+      <!-- Modal Body (Native High-Res HTML5 Player + Info) -->
       <div class="flex-1 overflow-y-auto">
-        <div class="bg-black aspect-video w-full relative">
-          <iframe 
-            id="modal-youtube-iframe" 
-            src="" 
-            class="w-full h-full border-0" 
-            allowfullscreen 
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          ></iframe>
+        <div class="bg-black aspect-video w-full relative flex items-center justify-center">
+          <video id="modal-native-video" class="w-full h-full object-contain" controls autoplay playsinline></video>
         </div>
 
         <div class="p-4 sm:p-5 space-y-3">
-          <h2 id="modal-yt-title" class="text-base sm:text-xl font-bold text-white leading-snug">Video Title</h2>
+          <h2 id="modal-video-title" class="text-base sm:text-xl font-bold text-white leading-snug">Video Title</h2>
           <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400">
-            <span id="modal-yt-meta">1.4M views • 1:24:18</span>
-            <button onclick="shareActiveYtToChat()" class="px-3.5 py-1.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center gap-1.5 transition shadow">
+            <span id="modal-video-meta">1.4M views • Duration: 12:14</span>
+            <button onclick="shareActiveModalVideoToChat()" class="px-3.5 py-1.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center gap-1.5 transition shadow">
               <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
               <span>Forward to Chat</span>
             </button>
           </div>
           <div class="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
-            <img id="modal-yt-channel-avatar" src="" class="w-10 h-10 rounded-full object-cover">
+            <img id="modal-video-creator-avatar" src="" class="w-10 h-10 rounded-full object-cover">
             <div>
-              <h4 id="modal-yt-channel-name" class="font-bold text-sm text-white">Channel Name</h4>
-              <p class="text-xs text-gray-400">Verified Long-Form Creator</p>
+              <h4 id="modal-video-creator-name" class="font-bold text-sm text-white">Creator Name</h4>
+              <p class="text-xs text-purple-400">Verified Crochit Creator</p>
             </div>
           </div>
-          <p id="modal-yt-desc" class="text-xs text-gray-300 leading-relaxed p-3 rounded-xl bg-white/5">
+          <p id="modal-video-desc" class="text-xs text-gray-300 leading-relaxed p-3 rounded-xl bg-white/5">
             Video description
           </p>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== MODAL: ADD INSTAGRAM REEL ==================== -->
-  <div id="add-reel-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
-    <div class="bg-[#131822] border border-white/10 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-white/10 pb-3">
-        <h3 class="font-bold text-white text-base flex items-center gap-2">
-          <i data-lucide="instagram" class="w-4 h-4 text-pink-400"></i>
-          Link Any Instagram Reel
-        </h3>
-        <button onclick="closeAddReelModal()" class="text-gray-400 hover:text-white">
-          <i data-lucide="x" class="w-4 h-4"></i>
-        </button>
-      </div>
-
-      <p class="text-xs text-gray-400">
-        Instagram se kisi bhi Reel ka link copy karke yahan paste karein. Wo directly isi app me chalegi:
-      </p>
-
-      <div class="space-y-3">
-        <div>
-          <label class="text-xs font-semibold text-gray-300 block mb-1">Reel Link:</label>
-          <input 
-            id="new-reel-url" 
-            type="text" 
-            placeholder="https://www.instagram.com/reel/C5nQ0q0L7f0/ ..."
-            class="w-full bg-[#1b222d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-pink-500"
-          />
-        </div>
-        <div>
-          <label class="text-xs font-semibold text-gray-300 block mb-1">Title / Caption (Optional):</label>
-          <input 
-            id="new-reel-title" 
-            type="text" 
-            placeholder="e.g. Crazy moments, funny reel..."
-            class="w-full bg-[#1b222d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-pink-500"
-          />
-        </div>
-        <button 
-          onclick="addInstagramReel()" 
-          class="w-full py-2.5 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 text-white font-bold text-xs hover:opacity-90 transition shadow-lg shadow-pink-600/30"
-        >
-          Add to Feed
-        </button>
       </div>
     </div>
   </div>
@@ -637,7 +563,7 @@
   <div id="attach-media-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
     <div class="bg-[#131822] border border-white/10 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl">
       <div class="flex items-center justify-between border-b border-white/10 pb-3">
-        <h3 class="font-bold text-white text-base">Select Video or Reel to Send in Chat</h3>
+        <h3 class="font-bold text-white text-base">Select Video to Send in Chat</h3>
         <button onclick="closeAttachMediaModal()" class="text-gray-400 hover:text-white">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
@@ -645,11 +571,11 @@
 
       <!-- Selector tabs inside modal -->
       <div class="flex border-b border-white/10 text-xs">
-        <button id="modal-tab-yt" onclick="renderAttachPicker('yt')" class="flex-1 py-2 font-bold text-red-400 border-b-2 border-red-500">
-          YouTube Videos
+        <button id="modal-tab-long" onclick="renderAttachPicker('long')" class="flex-1 py-2 font-bold text-purple-400 border-b-2 border-purple-500">
+          Long Videos
         </button>
-        <button id="modal-tab-ig" onclick="renderAttachPicker('ig')" class="flex-1 py-2 font-semibold text-gray-400">
-          Instagram Reels
+        <button id="modal-tab-reels" onclick="renderAttachPicker('reels')" class="flex-1 py-2 font-semibold text-gray-400">
+          Reels
         </button>
       </div>
 
@@ -729,14 +655,14 @@
   <!-- ==================== 4 BOTTOM NAVIGATION BAR (MOBILE & TABLET) ==================== -->
   <nav class="md:hidden h-16 bg-[#0d1117] border-t border-white/10 flex items-center justify-around shrink-0 z-40 fixed bottom-0 left-0 right-0">
     <!-- 1. Home -->
-    <button onclick="switchMainTab('home')" id="bottom-tab-home" class="flex flex-col items-center gap-1 text-red-500">
-      <i data-lucide="play" class="w-5 h-5 fill-red-500"></i>
+    <button onclick="switchMainTab('home')" id="bottom-tab-home" class="flex flex-col items-center gap-1 text-purple-400">
+      <i data-lucide="play" class="w-5 h-5 fill-purple-400"></i>
       <span class="text-[10px] font-bold">Home</span>
     </button>
     <!-- 2. Feed -->
     <button onclick="switchMainTab('feed')" id="bottom-tab-feed" class="flex flex-col items-center gap-1 text-gray-400">
-      <i data-lucide="instagram" class="w-5 h-5"></i>
-      <span class="text-[10px] font-medium">Feed</span>
+      <i data-lucide="zap" class="w-5 h-5"></i>
+      <span class="text-[10px] font-medium">Reels</span>
     </button>
     <!-- 3. Chat -->
     <button onclick="switchMainTab('chat')" id="bottom-tab-chat" class="flex flex-col items-center gap-1 text-gray-400 relative">
