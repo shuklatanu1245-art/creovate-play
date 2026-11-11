@@ -1,6 +1,6 @@
-// Creovate Play - Instagram Videos & Real-Time Peer Data
+// Crochit - Instagram Videos & Real-Time Peer Data
 
-const CREOVATE_DATA = {
+const CROCHIT_DATA = {
   // Preloaded Trending Instagram Reels & Videos
   // Uses Instagram's official embed shortcodes
   instagramReels: [
@@ -65,3 +65,6 @@ const CREOVATE_DATA = {
     "All Reels", "Tech & Coding", "Comedy", "Sports & Cricket", "Motivation", "Music"
   ]
 };
+
+// Backward-compatible alias
+const CREOVATE_DATA = CROCHIT_DATA;

@@ -1,8 +1,8 @@
-# 🔮 Creovate Play - Instagram Reels & Real-Time Peer Chat
+# 🔮 Crochit - Instagram Reels & Real-Time Peer Chat
 
-![Creovate Play Logo](assets/logo.png)
+![Crochit Logo](assets/logo.png)
 
-**Creovate Play** ko bilkul clean aur focused bana diya gaya hai:
+**Crochit** ek modern web application hai jisme:
 1. **Real Persons Live Chat:** PeerJS (WebRTC) ke zariye end-to-end direct chatting real logon ke sath.
 2. **Instagram Reels Feed:** Instagram ki videos/reels directly embedded hain, plus aap kisi bhi reel ka link paste karke play kar sakte hain!
 3. **Floating Mini-Player (Picture-in-Picture):** Instagram Reel background me dekhein jabki aap real person se live chat kar rahe hon.
@@ -11,12 +11,12 @@
 
 ## 👥 Real Persons Se Kaise Baat Karein (How to Chat with Real People)
 
-Creovate Play me direct WebRTC Peer-to-Peer engine integrated hai:
+Crochit me direct WebRTC Peer-to-Peer engine integrated hai:
 
 ### Step 1: Apna Invite Link ya ID Share Karein
-- Top header me aapko aapka unique ID dikhega (e.g. `creo-a78b`).
+- Top header me aapko aapka unique ID dikhega (e.g. `crochit-a78b`).
 - **"Invite Friend"** button dabayein — ek clickable direct link copy ho jayega:
-  `http://.../index.html?connect=creo-a78b`
+  `http://.../index.html?connect=crochit-a78b`
 - Ye link apne friend ko WhatsApp ya kisi bhi platform par bhej dein.
 
 ### Step 2: Instant Real-Time Connection

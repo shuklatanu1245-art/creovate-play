@@ -1,4 +1,4 @@
-// Creovate Play - Instagram Reels & Real-Time P2P Chat Engine
+// Crochit - Instagram Reels & Real-Time P2P Chat Engine
 // PeerJS + BroadcastChannel + Instagram Embeds
 
 let state = {
@@ -13,8 +13,8 @@ let state = {
 };
 
 // Storage Keys
-const REELS_STORAGE_KEY = 'creovate_reels_data_v2';
-const CHAT_STORAGE_KEY = 'creovate_real_chat_history_v2';
+const REELS_STORAGE_KEY = 'crochit_reels_data_v1';
+const CHAT_STORAGE_KEY = 'crochit_real_chat_history_v1';
 
 document.addEventListener('DOMContentLoaded', () => {
   initReelsData();
@@ -31,13 +31,18 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==================== DATA INIT ====================
 function initReelsData() {
   if (!localStorage.getItem(REELS_STORAGE_KEY)) {
-    localStorage.setItem(REELS_STORAGE_KEY, JSON.stringify(CREOVATE_DATA.instagramReels));
+    const prev = localStorage.getItem('creovate_reels_data_v2');
+    if (prev) {
+      localStorage.setItem(REELS_STORAGE_KEY, prev);
+    } else {
+      localStorage.setItem(REELS_STORAGE_KEY, JSON.stringify(CROCHIT_DATA.instagramReels));
+    }
   }
 }
 
 function getReels() {
-  const stored = localStorage.getItem(REELS_STORAGE_KEY);
-  return stored ? JSON.parse(stored) : CREOVATE_DATA.instagramReels;
+  const stored = localStorage.getItem(REELS_STORAGE_KEY) || localStorage.getItem('creovate_reels_data_v2');
+  return stored ? JSON.parse(stored) : CROCHIT_DATA.instagramReels;
 }
 
 function saveReels(reels) {
@@ -45,7 +50,7 @@ function saveReels(reels) {
 }
 
 function getChatHistory() {
-  const stored = localStorage.getItem(CHAT_STORAGE_KEY);
+  const stored = localStorage.getItem(CHAT_STORAGE_KEY) || localStorage.getItem('creovate_real_chat_history_v2');
   return stored ? JSON.parse(stored) : [];
 }
 
@@ -57,7 +62,7 @@ function saveChatHistory(history) {
 function initP2PEngine() {
   // 1. Setup multi-tab BroadcastChannel for instant local testing
   try {
-    state.broadcastChannel = new BroadcastChannel('creovate_p2p_channel');
+    state.broadcastChannel = new BroadcastChannel('crochit_p2p_channel');
     state.broadcastChannel.onmessage = (event) => {
       const data = event.data;
       if (data && data.type === 'MESSAGE' && data.senderId !== state.myPeerId) {
@@ -72,7 +77,7 @@ function initP2PEngine() {
 
   // 2. Setup PeerJS for internet-wide P2P communication between real people
   const randomSuffix = Math.random().toString(36).substring(2, 6);
-  const myGeneratedId = 'creo-' + randomSuffix;
+  const myGeneratedId = 'crochit-' + randomSuffix;
 
   try {
     const peer = new Peer(myGeneratedId, {
@@ -519,7 +524,7 @@ function addInstagramReel() {
   closeAddReelModal();
 
   renderReels();
-  alert('Instagram Reel successfully added to Creovate Play!');
+  alert('Instagram Reel successfully added to Crochit!');
 }
 
 // ==================== FLOATING MINI-PLAYER (PIP) ====================
@@ -595,9 +600,9 @@ function connectToFriendFromModal() {
 function copyMyId() {
   if (!state.myPeerId) return;
   navigator.clipboard.writeText(state.myPeerId).then(() => {
-    alert(`Copied Your Creovate ID: ${state.myPeerId}\nSend this ID to your friend so they can connect with you!`);
+    alert(`Copied Your Crochit ID: ${state.myPeerId}\nSend this ID to your friend so they can connect with you!`);
   }).catch(() => {
-    prompt('Copy your Creovate ID:', state.myPeerId);
+    prompt('Copy your Crochit ID:', state.myPeerId);
   });
 }
 
