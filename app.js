@@ -1,1055 +1,1146 @@
-// Crochit - Application Core Engine
-// 4 Bottom Navigation Pages: Home (Long Videos), Feed (Vertical Snap Reels), Chat, Profile
-// 100% Native In-App Playback, Infinite Scrolling, Real Search, In-Place Database Updates
+// Crochit - Dedicated Real-Time Messaging & Chat Core Engine
+// 100% Pure Chat & Messaging: Direct Chats, Groups, Status Stories, Real-Time P2P WebRTC, In-Place Database Updates
+// No Videos, No External Media Streams - High Performance & Instant Response
 
+// Application State
 let state = {
-  activeTab: 'home',
-  activeHomeCategory: 'All',
-  homeSearchQuery: '',
+  sidebarTab: 'chats', // 'chats' | 'status' | 'profile'
+  activeChatId: 'chat_1',
   currentUser: null,
   activePeerConn: null,
   myPeerId: null,
+  peerInstance: null,
   broadcastChannel: null,
   supabaseClient: null,
   authMode: 'signin',
-  activeModalVideo: null,
-  activeMiniVideo: null,
-  homeVideosList: [],
-  reelsList: [],
-  reelObserver: null,
-  reelsMuted: true
+  chatsList: [],
+  statusesList: [],
+  searchQuery: '',
+  statusTimer: null,
+  isRecordingVoice: false
 };
 
 // Database Storage Keys
 const DB_USERS_KEY = 'crochit_db_users_v1';
 const DB_SESSION_KEY = 'crochit_active_session_v1';
-const DB_REELS_KEY = 'crochit_reels_data_v1';
-const DB_CHAT_KEY = 'crochit_real_chat_history_v1';
+const DB_CHATS_KEY = 'crochit_chats_v1';
+const DB_STATUSES_KEY = 'crochit_statuses_v1';
 const DB_SUPABASE_KEY = 'crochit_supabase_config_v1';
 
+// ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', () => {
   initDatabase();
   initSupabase();
-  initP2PEngine();
-  initMediaStreams();
-  renderHomeCategories();
-  renderHomeVideos();
-  initReelsFeed();
-  renderChatHistory();
+  initBroadcastChannel();
+  initPeerJSEngine();
+  renderMiniStatusBar();
+  renderConversationsList();
+  renderFullStatusList();
   renderProfileData();
-  setupInfiniteScrollListeners();
-  setupSearchListener();
+  selectChat(state.activeChatId);
+  setupEventListeners();
 
   // Initialize Lucide icons
-  lucide.createIcons();
+  if (window.lucide) {
+    lucide.createIcons();
+  }
 });
 
-// ==================== 1. MEDIA STREAMS & INFINITE GENERATORS ====================
-function initMediaStreams() {
-  // Initialize Home Long Videos list with initial bank
-  state.homeVideosList = [...CROCHIT_MEDIA_BANK.longStreams];
-
-  // Initialize Reels with initial bank
-  state.reelsList = [...CROCHIT_MEDIA_BANK.reelStreams];
-}
-
-// Procedural Generator for Infinite Long Videos (Never Ends!)
-function generateMoreLongVideos(count = 6) {
-  const titles = [
-    "Next-Gen High Performance Cloud Architecture & Microservices Masterclass",
-    "Midnight Synthwave Coding & Focus Odyssey [Extended 3-Hour Session]",
-    "Deep Dive: Neurological Mechanisms of Deep Focus and Habit Mastery",
-    "Epic Space Odyssey: Unraveling Gravitational Waves and Quantum Mechanics",
-    "High-Octane Cinematic Action: Behind the Scenes of Next-Gen Game Engines",
-    "Championship Finals: Unbelievable Last-Second Comebacks & Clutch Plays",
-    "Autonomous Robotics & Intelligent Agent Frameworks in 2026",
-    "Calm Rain & Lo-Fi Beats for Creative Flow and Relaxed Thinking"
-  ];
-
-  const creators = ["Apex Studio", "DevMastery", "SoundVibes", "CosmoChronicles", "GameCraft", "StadiumLive"];
-  const categories = ["Tech & Coding", "Music & Chill", "Documentary", "Gaming", "Podcasts", "Sports"];
-  const streams = CROCHIT_MEDIA_BANK.longStreams;
-
-  const newVideos = [];
-  for (let i = 0; i < count; i++) {
-    const stream = streams[Math.floor(Math.random() * streams.length)];
-    const title = titles[Math.floor(Math.random() * titles.length)];
-    const creator = creators[Math.floor(Math.random() * creators.length)];
-    const category = categories[Math.floor(Math.random() * categories.length)];
-    const views = (Math.random() * 4 + 1).toFixed(1) + 'M';
-    const duration = `${Math.floor(Math.random() * 20 + 10)}:${Math.floor(Math.random() * 50 + 10)}`;
-
-    newVideos.push({
-      id: 'long_' + Date.now() + '_' + i,
-      url: stream.url,
-      title: `${title} #${state.homeVideosList.length + i + 1}`,
-      creator: creator,
-      avatar: stream.avatar,
-      duration: duration,
-      views: views,
-      category: category,
-      thumbnail: stream.thumbnail,
-      description: stream.description
-    });
-  }
-
-  state.homeVideosList.push(...newVideos);
-  return newVideos;
-}
-
-// Procedural Generator for Infinite Vertical Reels (Never Ends!)
-function generateMoreReels(count = 5) {
-  const reelTitles = [
-    "Late night flow state with ambient beats 💻⚡ #coding #vibes",
-    "Daily relentless focus over temporary motivation 🔥",
-    "Unbelievable reflex catch at the boundary line! 💥",
-    "When notifications explode on your phone at 6 AM 😂",
-    "Midnight acoustic melody for calm relaxation 🎸🌧️",
-    "POV: Chatting with friends while watching reels simultaneously on Crochit 🚀"
-  ];
-
-  const creators = ["@code_artisan", "@mindset_daily", "@sports_pulse", "@comedy_hub", "@acoustic_chords", "@crochit_creator"];
-  const reelStreams = CROCHIT_MEDIA_BANK.reelStreams;
-
-  const newReels = [];
-  for (let i = 0; i < count; i++) {
-    const stream = reelStreams[Math.floor(Math.random() * reelStreams.length)];
-    const title = reelTitles[Math.floor(Math.random() * reelTitles.length)];
-    const creator = creators[Math.floor(Math.random() * creators.length)];
-    const likes = `${Math.floor(Math.random() * 500 + 100)}K`;
-    const comments = `${(Math.random() * 15 + 1).toFixed(1)}K`;
-    const shares = `${Math.floor(Math.random() * 80 + 10)}K`;
-
-    newReels.push({
-      id: 'reel_' + Date.now() + '_' + i,
-      url: stream.url,
-      title: title,
-      creator: creator,
-      creatorAvatar: stream.creatorAvatar,
-      likes: likes,
-      comments: comments,
-      shares: shares,
-      music: stream.music,
-      category: stream.category,
-      isLiked: false
-    });
-  }
-
-  state.reelsList.push(...newReels);
-  return newReels;
-}
-
-// ==================== 2. PAGE 1: HOME (LONG VIDEOS & REAL SEARCH) ====================
-function renderHomeCategories() {
-  const container = document.getElementById('home-category-chips');
-  if (!container) return;
-
-  container.innerHTML = CROCHIT_MEDIA_BANK.categories.map(cat => {
-    const isActive = cat === state.activeHomeCategory;
-    return `
-      <button 
-        onclick="selectHomeCategory('${cat}')" 
-        class="px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-          isActive 
-            ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' 
-            : 'bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white'
-        }"
-      >
-        ${cat}
-      </button>
-    `;
-  }).join('');
-}
-
-function selectHomeCategory(category) {
-  state.activeHomeCategory = category;
-  renderHomeCategories();
-  renderHomeVideos();
-}
-
-function executeHomeSearch() {
-  const input = document.getElementById('home-video-search');
-  if (input) {
-    state.homeSearchQuery = input.value.trim();
-    renderHomeVideos();
-    // Switch to home tab if on another page
-    if (state.activeTab !== 'home') {
-      switchMainTab('home');
-    }
-  }
-}
-
-function setupSearchListener() {
-  const input = document.getElementById('home-video-search');
-  if (input) {
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        executeHomeSearch();
-      }
-    });
-  }
-}
-
-function renderHomeVideos() {
-  const grid = document.getElementById('long-videos-grid');
-  if (!grid) return;
-
-  let videos = state.homeVideosList;
-
-  // Filter category
-  if (state.activeHomeCategory !== 'All') {
-    videos = videos.filter(v => v.category === state.activeHomeCategory);
-  }
-
-  // Filter real search
-  if (state.homeSearchQuery.trim()) {
-    const q = state.homeSearchQuery.toLowerCase();
-    videos = videos.filter(v => 
-      v.title.toLowerCase().includes(q) || 
-      v.creator.toLowerCase().includes(q) ||
-      v.category.toLowerCase().includes(q) ||
-      (v.description && v.description.toLowerCase().includes(q))
-    );
-  }
-
-  if (videos.length === 0) {
-    grid.innerHTML = `
-      <div class="col-span-full py-16 text-center text-gray-400">
-        <i data-lucide="video-off" class="w-12 h-12 mx-auto mb-3 text-gray-600"></i>
-        <p class="text-base font-bold text-gray-200">No videos found for "${escapeHtml(state.homeSearchQuery)}"</p>
-        <p class="text-xs text-gray-500 mt-1">Try another keyword or category.</p>
-        <button onclick="clearSearchAndReset()" class="mt-4 px-4 py-1.5 rounded-xl bg-purple-600 text-white text-xs font-semibold">
-          Reset Search
-        </button>
-      </div>
-    `;
-    lucide.createIcons();
-    return;
-  }
-
-  grid.innerHTML = videos.map(video => {
-    return `
-      <div class="bg-[#121822] border border-white/10 hover:border-purple-500/40 rounded-2xl overflow-hidden shadow-lg transition-all flex flex-col justify-between group">
-        <!-- Thumbnail & Play Action -->
-        <div class="relative aspect-video bg-black cursor-pointer overflow-hidden" onclick="playNativeVideoInModal('${video.id}')">
-          <img src="${video.thumbnail}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" alt="${video.title}">
-          
-          <div class="absolute bottom-2 right-2 bg-black/85 text-white font-mono text-[11px] px-2 py-0.5 rounded font-bold backdrop-blur-sm">
-            ${video.duration}
-          </div>
-
-          <!-- Play button overlay -->
-          <div class="absolute inset-0 bg-black/30 group-hover:bg-black/10 flex items-center justify-center transition">
-            <div class="w-12 h-12 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-xl group-hover:scale-110 transition">
-              <i data-lucide="play" class="w-6 h-6 fill-white ml-0.5"></i>
-            </div>
-          </div>
-        </div>
-
-        <!-- Details -->
-        <div class="p-4 space-y-3">
-          <div class="flex gap-3">
-            <img src="${video.avatar}" class="w-9 h-9 rounded-full object-cover shrink-0 border border-white/10">
-            <div class="min-w-0 flex-1">
-              <h3 class="text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-purple-400 transition cursor-pointer" onclick="playNativeVideoInModal('${video.id}')">
-                ${video.title}
-              </h3>
-              <p class="text-xs text-gray-400 mt-1 flex items-center gap-1.5">
-                <span>${video.creator}</span>
-                <span>•</span>
-                <span>${video.views}</span>
-              </p>
-            </div>
-          </div>
-
-          <!-- Action buttons (Float & Chat + Send to Chat) -->
-          <div class="flex items-center gap-2 pt-2 border-t border-white/5 text-xs">
-            <button 
-              onclick="floatNativeVideo('${video.id}')"
-              class="flex-1 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 font-semibold flex items-center justify-center gap-1 border border-purple-500/30 transition"
-              title="Watch in corner while chatting"
-            >
-              <i data-lucide="minimize-2" class="w-3.5 h-3.5"></i>
-              <span>Float & Chat</span>
-            </button>
-            <button 
-              onclick="shareVideoToChatDirect('${video.id}')"
-              class="flex-1 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold flex items-center justify-center gap-1 transition"
-              title="Send to chat"
-            >
-              <i data-lucide="send" class="w-3.5 h-3.5"></i>
-              <span>Send in Chat</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  lucide.createIcons();
-}
-
-function clearSearchAndReset() {
-  const input = document.getElementById('home-video-search');
-  if (input) input.value = '';
-  state.homeSearchQuery = '';
-  state.activeHomeCategory = 'All';
-  renderHomeCategories();
-  renderHomeVideos();
-}
-
-// Play Video In-App via HTML5 Native Video Player
-function playNativeVideoInModal(videoId) {
-  const video = state.homeVideosList.find(v => v.id === videoId);
-  if (!video) return;
-
-  state.activeModalVideo = video;
-  const modal = document.getElementById('video-player-modal');
-  const videoEl = document.getElementById('modal-native-video');
-
-  document.getElementById('modal-video-title').textContent = video.title;
-  document.getElementById('modal-video-meta').textContent = `${video.views} views • Duration: ${video.duration}`;
-  document.getElementById('modal-video-creator-name').textContent = video.creator;
-  document.getElementById('modal-video-creator-avatar').src = video.avatar;
-  document.getElementById('modal-video-desc').textContent = video.description || 'High-definition long-form stream on Crochit.';
-
-  videoEl.src = video.url;
-  videoEl.play().catch(e => console.log('Autoplay handled:', e));
-
-  modal.classList.remove('hidden');
-  closeFloatingPlayer();
-}
-
-function closeVideoModal() {
-  const modal = document.getElementById('video-player-modal');
-  const videoEl = document.getElementById('modal-native-video');
-  if (videoEl) videoEl.pause();
-  modal.classList.add('hidden');
-}
-
-function minimizeModalVideoToMini() {
-  if (!state.activeModalVideo) return;
-  const currentVideo = state.activeModalVideo;
-  const modalVideoEl = document.getElementById('modal-native-video');
-  const currentTime = modalVideoEl ? modalVideoEl.currentTime : 0;
-
-  closeVideoModal();
-  floatNativeVideo(currentVideo.id, currentTime);
-}
-
-function floatNativeVideo(videoId, startTime = 0) {
-  const video = state.homeVideosList.find(v => v.id === videoId) || state.reelsList.find(r => r.id === videoId);
-  if (!video) return;
-
-  const player = document.getElementById('floating-mini-player');
-  const miniVideoEl = document.getElementById('mini-player-video');
-  const titleEl = document.getElementById('mini-player-title');
-
-  titleEl.textContent = video.title;
-  miniVideoEl.src = video.url;
-  if (startTime > 0) miniVideoEl.currentTime = startTime;
-
-  player.classList.remove('hidden');
-  miniVideoEl.play().catch(e => console.log('Mini play policy:', e));
-  state.activeMiniVideo = video;
-}
-
-function closeFloatingPlayer() {
-  const player = document.getElementById('floating-mini-player');
-  const miniVideoEl = document.getElementById('mini-player-video');
-  if (miniVideoEl) miniVideoEl.pause();
-  if (player) player.classList.add('hidden');
-  state.activeMiniVideo = null;
-}
-
-function shareActiveModalVideoToChat() {
-  if (state.activeModalVideo) {
-    shareVideoToChatDirect(state.activeModalVideo.id);
-    closeVideoModal();
-  }
-}
-
-// ==================== 3. PAGE 2: FEED (VERTICAL SNAP-SCROLL REELS) ====================
-function initReelsFeed() {
-  const container = document.getElementById('reels-snap-container');
-  if (!container) return;
-
-  container.innerHTML = '';
-  appendReelsToFeed(state.reelsList);
-
-  // IntersectionObserver to auto-play only visible reel and pause others
-  setupReelsIntersectionObserver();
-}
-
-function appendReelsToFeed(reelsToAppend) {
-  const container = document.getElementById('reels-snap-container');
-  if (!container) return;
-
-  reelsToAppend.forEach(reel => {
-    const slide = document.createElement('div');
-    slide.className = 'reel-slide-item w-full';
-    slide.id = `reel-slide-${reel.id}`;
-    slide.dataset.reelId = reel.id;
-
-    slide.innerHTML = `
-      <!-- Video Element (Autoplays seamlessly, loop) -->
-      <video 
-        class="reel-native-video absolute inset-0 w-full h-full object-cover cursor-pointer"
-        src="${reel.url}"
-        loop
-        playsinline
-        muted
-      ></video>
-
-      <!-- Center Play/Pause indicator overlay on tap -->
-      <div class="reel-center-play absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 transition-opacity">
-        <div class="w-16 h-16 rounded-full bg-black/60 backdrop-blur flex items-center justify-center">
-          <i data-lucide="play" class="w-8 h-8 fill-white text-white ml-1"></i>
-        </div>
-      </div>
-
-      <!-- Right Action Column -->
-      <div class="absolute right-3 bottom-20 flex flex-col items-center gap-5 z-20 text-white">
-        <!-- Like Button -->
-        <button onclick="toggleReelLike('${reel.id}')" class="flex flex-col items-center gap-1 group">
-          <div class="w-11 h-11 rounded-full bg-black/50 backdrop-blur flex items-center justify-center group-hover:scale-110 transition border border-white/10">
-            <i id="like-icon-${reel.id}" data-lucide="heart" class="w-6 h-6 ${reel.isLiked ? 'fill-red-500 text-red-500' : 'text-white'}"></i>
-          </div>
-          <span id="like-count-${reel.id}" class="text-[11px] font-bold">${reel.likes}</span>
-        </button>
-
-        <!-- Comments -->
-        <button onclick="openReelComments('${reel.id}')" class="flex flex-col items-center gap-1 group">
-          <div class="w-11 h-11 rounded-full bg-black/50 backdrop-blur flex items-center justify-center group-hover:scale-110 transition border border-white/10">
-            <i data-lucide="message-circle" class="w-6 h-6 text-white"></i>
-          </div>
-          <span class="text-[11px] font-bold">${reel.comments}</span>
-        </button>
-
-        <!-- Share to Chat -->
-        <button onclick="shareReelToChat('${reel.id}')" class="flex flex-col items-center gap-1 group">
-          <div class="w-11 h-11 rounded-full bg-purple-600/90 backdrop-blur flex items-center justify-center group-hover:scale-110 transition shadow-lg shadow-purple-600/30">
-            <i data-lucide="send" class="w-5 h-5 text-white"></i>
-          </div>
-          <span class="text-[11px] font-bold">Share</span>
-        </button>
-
-        <!-- Float & Chat (Picture-in-Picture) -->
-        <button onclick="floatReelSlide('${reel.id}')" class="flex flex-col items-center gap-1 group" title="Float reel & chat simultaneously">
-          <div class="w-11 h-11 rounded-full bg-black/50 backdrop-blur flex items-center justify-center group-hover:scale-110 transition border border-white/10">
-            <i data-lucide="minimize-2" class="w-5 h-5 text-purple-300"></i>
-          </div>
-          <span class="text-[10px] font-bold text-gray-300">Float</span>
-        </button>
-
-        <!-- Sound Toggle -->
-        <button onclick="toggleReelAudio('${reel.id}')" class="flex flex-col items-center gap-1 group">
-          <div class="w-11 h-11 rounded-full bg-black/50 backdrop-blur flex items-center justify-center group-hover:scale-110 transition border border-white/10">
-            <i id="sound-icon-${reel.id}" data-lucide="volume-x" class="w-5 h-5 text-white"></i>
-          </div>
-        </button>
-      </div>
-
-      <!-- Bottom Details Overlay -->
-      <div class="absolute left-3 right-16 bottom-5 z-20 space-y-2 pointer-events-auto">
-        <div class="flex items-center gap-2.5">
-          <img src="${reel.creatorAvatar}" class="w-9 h-9 rounded-full object-cover border-2 border-purple-500 shadow">
-          <span class="font-bold text-white text-sm">${reel.creator}</span>
-          <button onclick="toggleFollow(this)" class="px-2.5 py-0.5 rounded-full bg-purple-600 text-white font-bold text-xs hover:bg-purple-500 transition">
-            Follow
-          </button>
-        </div>
-
-        <p class="text-xs text-gray-100 font-medium line-clamp-2 leading-relaxed">
-          ${reel.title}
-        </p>
-
-        <div class="flex items-center gap-1.5 text-xs text-gray-300">
-          <i data-lucide="music" class="w-3.5 h-3.5 text-purple-400"></i>
-          <span class="text-[11px] truncate">${reel.music}</span>
-        </div>
-      </div>
-    `;
-
-    // Click on video toggles play/pause
-    const video = slide.querySelector('.reel-native-video');
-    const playIndicator = slide.querySelector('.reel-center-play');
-    video.addEventListener('click', () => {
-      if (video.paused) {
-        video.play();
-        playIndicator.classList.add('opacity-0');
-      } else {
-        video.pause();
-        playIndicator.classList.remove('opacity-0');
-      }
-    });
-
-    container.appendChild(slide);
-  });
-
-  lucide.createIcons();
-}
-
-function setupReelsIntersectionObserver() {
-  if (state.reelObserver) {
-    state.reelObserver.disconnect();
-  }
-
-  const container = document.getElementById('reels-snap-container');
-  if (!container) return;
-
-  const options = {
-    root: container,
-    threshold: 0.65 // Video must be 65% in view to play
-  };
-
-  state.reelObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      const video = entry.target.querySelector('.reel-native-video');
-      if (!video) return;
-
-      if (entry.isIntersecting && state.activeTab === 'feed') {
-        video.play().catch(e => console.log('Reel autoplay policy:', e));
-      } else {
-        video.pause();
-      }
-    });
-  }, options);
-
-  const slides = container.querySelectorAll('.reel-slide-item');
-  slides.forEach(slide => state.reelObserver.observe(slide));
-}
-
-function toggleReelLike(reelId) {
-  const reel = state.reelsList.find(r => r.id === reelId);
-  const icon = document.getElementById(`like-icon-${reelId}`);
-  const count = document.getElementById(`like-count-${reelId}`);
-  if (!reel || !icon) return;
-
-  reel.isLiked = !reel.isLiked;
-  if (reel.isLiked) {
-    icon.className = 'w-6 h-6 fill-red-500 text-red-500 animate-heart-pop';
-    icon.classList.add('fill-red-500', 'text-red-500');
-  } else {
-    icon.className = 'w-6 h-6 text-white';
-  }
-}
-
-function toggleReelAudio(reelId) {
-  state.reelsMuted = !state.reelsMuted;
-  const container = document.getElementById('reels-snap-container');
-  if (!container) return;
-
-  const videos = container.querySelectorAll('.reel-native-video');
-  videos.forEach(v => v.muted = state.reelsMuted);
-
-  const icons = container.querySelectorAll(`[id^="sound-icon-"]`);
-  icons.forEach(ic => {
-    if (state.reelsMuted) {
-      ic.setAttribute('data-lucide', 'volume-x');
-    } else {
-      ic.setAttribute('data-lucide', 'volume-2');
-    }
-  });
-
-  lucide.createIcons();
-}
-
-function floatReelSlide(reelId) {
-  const reel = state.reelsList.find(r => r.id === reelId);
-  if (!reel) return;
-  floatNativeVideo(reel.id);
-}
-
-function shareReelToChat(reelId) {
-  const reel = state.reelsList.find(r => r.id === reelId);
-  if (!reel) return;
-
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  const msg = {
-    id: 'msg_reel_' + Date.now(),
-    senderId: state.myPeerId,
-    senderName: state.currentUser ? state.currentUser.username : 'You',
-    isMe: true,
-    time: timeStr,
-    text: `Check out this Reel: ${reel.title}`,
-    isMedia: true,
-    mediaType: 'reel',
-    mediaId: reel.id,
-    mediaTitle: reel.title,
-    mediaUrl: reel.url,
-    creator: reel.creator
-  };
-
-  saveAndBroadcastMessage(msg);
-  switchMainTab('chat');
-}
-
-function toggleFollow(btn) {
-  if (btn.textContent.trim() === 'Follow') {
-    btn.textContent = 'Following';
-    btn.className = 'px-2.5 py-0.5 rounded-full bg-white/20 text-white font-bold text-xs';
-  } else {
-    btn.textContent = 'Follow';
-    btn.className = 'px-2.5 py-0.5 rounded-full bg-purple-600 text-white font-bold text-xs hover:bg-purple-500 transition';
-  }
-}
-
-function openReelComments(reelId) {
-  alert('Reel comments section: Active community discussion.');
-}
-
-// ==================== 4. INFINITE SCROLL LISTENERS (UNLIMITED CONTENT) ====================
-function setupInfiniteScrollListeners() {
-  // 1. Home Long Videos Infinite Scroll
-  const homePage = document.getElementById('page-home');
-  if (homePage) {
-    homePage.addEventListener('scroll', () => {
-      // If user is within 300px of bottom, append more long videos
-      if (homePage.scrollTop + homePage.clientHeight >= homePage.scrollHeight - 300) {
-        if (!state.homeSearchQuery) { // Only append if not actively filtering
-          generateMoreLongVideos(6);
-          renderHomeVideos();
-        }
-      }
-    });
-  }
-
-  // 2. Feed Vertical Snap Reels Infinite Scroll
-  const reelsContainer = document.getElementById('reels-snap-container');
-  if (reelsContainer) {
-    reelsContainer.addEventListener('scroll', () => {
-      // If user is within 2 slides of bottom, append 5 more reels
-      if (reelsContainer.scrollTop + reelsContainer.clientHeight >= reelsContainer.scrollHeight - 600) {
-        const moreReels = generateMoreReels(5);
-        appendReelsToFeed(moreReels);
-        setupReelsIntersectionObserver();
-      }
-    });
-  }
-}
-
-// ==================== 5. PAGE 3: CHAT (REAL-TIME WEBRTC MESSAGING) ====================
-function initP2PEngine() {
-  try {
-    state.broadcastChannel = new BroadcastChannel('crochit_p2p_channel');
-    state.broadcastChannel.onmessage = (event) => {
-      const data = event.data;
-      if (data && data.type === 'MESSAGE' && data.senderId !== state.myPeerId) {
-        receiveChatMessage(data.payload);
-      }
-    };
-  } catch (err) {
-    console.log('Broadcast fallback:', err);
-  }
-
-  const randomSuffix = Math.random().toString(36).substring(2, 6);
-  const myGeneratedId = 'crochit-' + randomSuffix;
-
-  try {
-    const peer = new Peer(myGeneratedId, { debug: 1 });
-    peer.on('open', (id) => {
-      state.myPeerId = id;
-      const el = document.getElementById('my-peer-id');
-      if (el) el.textContent = id;
-
-      const urlParams = new URLSearchParams(window.location.search);
-      const connectTo = urlParams.get('connect');
-      if (connectTo && connectTo !== id) {
-        setTimeout(() => connectToPeer(connectTo), 800);
-      }
-    });
-
-    peer.on('connection', (conn) => setupConnection(conn));
-    window.crochitPeer = peer;
-  } catch (err) {
-    state.myPeerId = myGeneratedId;
-    const el = document.getElementById('my-peer-id');
-    if (el) el.textContent = myGeneratedId;
-  }
-}
-
-function connectToPeer(friendId) {
-  if (window.crochitPeer) {
-    const conn = window.crochitPeer.connect(friendId);
-    setupConnection(conn);
-  }
-}
-
-function setupConnection(conn) {
-  state.activePeerConn = conn;
-  conn.on('open', () => {
-    const subtext = document.getElementById('chat-peer-subtext');
-    if (subtext) subtext.textContent = `🟢 Connected with ${conn.peer}`;
-  });
-  conn.on('data', (data) => receiveChatMessage(data));
-}
-
-function copyMyId() {
-  if (!state.myPeerId) return;
-  navigator.clipboard.writeText(state.myPeerId).then(() => {
-    alert(`Copied Your Crochit ID: ${state.myPeerId}`);
-  }).catch(() => prompt('Copy your Crochit ID:', state.myPeerId));
-}
-
-function copyInviteLink() {
-  const url = `${window.location.origin}${window.location.pathname}?connect=${state.myPeerId}`;
-  navigator.clipboard.writeText(url).then(() => {
-    alert(`Copied Invite Link: \n${url}\nSend this to a friend to connect instantly!`);
-  }).catch(() => prompt('Copy invite link:', url));
-}
-
-function getStoredChatHistory() {
-  const history = localStorage.getItem(DB_CHAT_KEY);
-  return history ? JSON.parse(history) : [];
-}
-
-function renderChatHistory() {
-  const container = document.getElementById('chat-messages-container');
-  if (!container) return;
-  const history = getStoredChatHistory();
-  container.innerHTML = '';
-  history.forEach(msg => appendMessageToChatUI(msg, false));
-  container.scrollTop = container.scrollHeight;
-}
-
-function sendChatMessage() {
-  const input = document.getElementById('chat-message-input');
-  if (!input || !input.value.trim()) return;
-
-  const text = input.value.trim();
-  input.value = '';
-
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  const msg = {
-    id: 'msg_' + Date.now(),
-    senderId: state.myPeerId,
-    senderName: state.currentUser ? state.currentUser.username : 'You',
-    isMe: true,
-    time: timeStr,
-    text: text,
-    isMedia: false
-  };
-
-  saveAndBroadcastMessage(msg);
-}
-
-function shareVideoToChatDirect(videoId) {
-  const video = state.homeVideosList.find(v => v.id === videoId);
-  if (!video) return;
-
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  const msg = {
-    id: 'msg_v_' + Date.now(),
-    senderId: state.myPeerId,
-    senderName: state.currentUser ? state.currentUser.username : 'You',
-    isMe: true,
-    time: timeStr,
-    text: `Check out this video: ${video.title}`,
-    isMedia: true,
-    mediaType: 'long',
-    mediaId: video.id,
-    mediaTitle: video.title,
-    mediaUrl: video.url,
-    thumbnail: video.thumbnail,
-    duration: video.duration
-  };
-
-  saveAndBroadcastMessage(msg);
-  switchMainTab('chat');
-}
-
-function saveAndBroadcastMessage(msg) {
-  const history = getStoredChatHistory();
-  history.push(msg);
-  localStorage.setItem(DB_CHAT_KEY, JSON.stringify(history));
-  appendMessageToChatUI(msg);
-
-  if (state.activePeerConn && state.activePeerConn.open) {
-    state.activePeerConn.send({ ...msg, isMe: false });
-  }
-
-  if (state.broadcastChannel) {
-    state.broadcastChannel.postMessage({
-      type: 'MESSAGE',
-      senderId: state.myPeerId,
-      payload: { ...msg, isMe: false }
-    });
-  }
-}
-
-function receiveChatMessage(msg) {
-  const history = getStoredChatHistory();
-  history.push(msg);
-  localStorage.setItem(DB_CHAT_KEY, JSON.stringify(history));
-  appendMessageToChatUI(msg);
-}
-
-function appendMessageToChatUI(msg, scroll = true) {
-  const container = document.getElementById('chat-messages-container');
-  if (!container) return;
-
-  const isMe = msg.isMe;
-  const msgEl = document.createElement('div');
-  msgEl.className = `flex ${isMe ? 'justify-end' : 'justify-start'} animate-slide-up`;
-
-  if (msg.isMedia) {
-    msgEl.innerHTML = `
-      <div class="max-w-sm rounded-2xl p-3 ${isMe ? 'bubble-me text-white' : 'bubble-them text-gray-100'} shadow-lg border border-white/5 space-y-2">
-        <div class="flex items-center gap-1.5 pb-1 border-b border-white/10 text-xs font-bold text-purple-300">
-          <i data-lucide="${msg.mediaType === 'reel' ? 'zap' : 'play'}" class="w-4 h-4"></i>
-          <span>${msg.mediaType === 'reel' ? 'Reel Clip' : 'Video Stream'}</span>
-        </div>
-        <p class="text-xs font-semibold leading-snug">${msg.mediaTitle}</p>
-        
-        <div class="relative aspect-video rounded-xl overflow-hidden bg-black cursor-pointer group" onclick="playNativeVideoInModal('${msg.mediaId}')">
-          ${msg.thumbnail ? `<img src="${msg.thumbnail}" class="w-full h-full object-cover">` : `<video src="${msg.mediaUrl}" class="w-full h-full object-cover"></video>`}
-          <div class="absolute inset-0 bg-black/40 flex items-center justify-center">
-            <div class="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition">
-              <i data-lucide="play" class="w-5 h-5 fill-white ml-0.5"></i>
-            </div>
-          </div>
-        </div>
-
-        <div class="flex items-center justify-between text-[10px] text-gray-300 pt-1">
-          <button onclick="floatNativeVideo('${msg.mediaId}')" class="text-purple-300 font-bold hover:underline">Float & Watch</button>
-          <div class="flex items-center gap-1">
-            <span>${msg.time}</span>
-            ${isMe ? '<span class="text-emerald-400">✓✓</span>' : ''}
-          </div>
-        </div>
-      </div>
-    `;
-  } else {
-    msgEl.innerHTML = `
-      <div class="max-w-md rounded-2xl px-3.5 py-2.5 ${isMe ? 'bubble-me text-white' : 'bubble-them text-gray-100'} shadow-md border border-white/5 space-y-1">
-        <p class="text-sm leading-relaxed">${escapeHtml(msg.text)}</p>
-        <div class="flex items-center justify-end gap-1 text-[10px] text-gray-400">
-          <span>${msg.time}</span>
-          ${isMe ? '<span class="text-emerald-400">✓✓</span>' : ''}
-        </div>
-      </div>
-    `;
-  }
-
-  container.appendChild(msgEl);
-  if (scroll) container.scrollTop = container.scrollHeight;
-  lucide.createIcons();
-}
-
-function openAttachMediaModal() {
-  document.getElementById('attach-media-modal').classList.remove('hidden');
-  renderAttachPicker('long');
-}
-
-function closeAttachMediaModal() {
-  document.getElementById('attach-media-modal').classList.add('hidden');
-}
-
-function renderAttachPicker(type) {
-  const container = document.getElementById('attach-picker-list');
-  const longTab = document.getElementById('modal-tab-long');
-  const reelsTab = document.getElementById('modal-tab-reels');
-
-  if (type === 'long') {
-    longTab.className = 'flex-1 py-2 font-bold text-purple-400 border-b-2 border-purple-500';
-    reelsTab.className = 'flex-1 py-2 font-semibold text-gray-400';
-    container.innerHTML = state.homeVideosList.map(v => `
-      <div onclick="shareVideoToChatDirect('${v.id}'); closeAttachMediaModal();" class="flex items-center justify-between p-2.5 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer border border-white/5 transition">
-        <div class="flex items-center gap-2.5 overflow-hidden">
-          <img src="${v.thumbnail}" class="w-16 h-10 object-cover rounded-lg shrink-0">
-          <div class="truncate">
-            <h4 class="text-xs font-bold text-white truncate">${v.title}</h4>
-            <span class="text-[10px] text-gray-400">${v.duration} • ${v.creator}</span>
-          </div>
-        </div>
-        <button class="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shrink-0">Send</button>
-      </div>
-    `).join('');
-  } else {
-    reelsTab.className = 'flex-1 py-2 font-bold text-purple-400 border-b-2 border-purple-500';
-    longTab.className = 'flex-1 py-2 font-semibold text-gray-400';
-    container.innerHTML = state.reelsList.map(r => `
-      <div onclick="shareReelToChat('${r.id}'); closeAttachMediaModal();" class="flex items-center justify-between p-2.5 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer border border-white/5 transition">
-        <div class="flex items-center gap-2.5 overflow-hidden">
-          <i data-lucide="zap" class="w-6 h-6 text-purple-400 shrink-0"></i>
-          <div class="truncate">
-            <h4 class="text-xs font-bold text-white truncate">${r.title}</h4>
-            <span class="text-[10px] text-gray-400">${r.creator}</span>
-          </div>
-        </div>
-        <button class="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shrink-0">Send</button>
-      </div>
-    `).join('');
-  }
-
-  lucide.createIcons();
-}
-
-// ==================== 6. PAGE 4: PROFILE & IN-PLACE DATABASE UPDATE ====================
+// ==================== 1. DATABASE & USER PROFILE (IN-PLACE UPDATES) ====================
 function initDatabase() {
-  let users = localStorage.getItem(DB_USERS_KEY);
-  if (!users) {
-    const initialUsers = [CROCHIT_MEDIA_BANK.defaultUser];
-    localStorage.setItem(DB_USERS_KEY, JSON.stringify(initialUsers));
-    users = JSON.stringify(initialUsers);
-  }
-
-  let activeSessionId = localStorage.getItem(DB_SESSION_KEY);
-  const parsedUsers = JSON.parse(users);
-
-  if (activeSessionId) {
-    state.currentUser = parsedUsers.find(u => u.id === activeSessionId) || parsedUsers[0];
-  } else {
-    state.currentUser = parsedUsers[0];
-    localStorage.setItem(DB_SESSION_KEY, state.currentUser.id);
-  }
-}
-
-function getAllDatabaseUsers() {
-  const users = localStorage.getItem(DB_USERS_KEY);
-  return users ? JSON.parse(users) : [CROCHIT_MEDIA_BANK.defaultUser];
-}
-
-function saveDatabaseUsers(users) {
-  localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
-}
-
-// IN-PLACE UPDATE (Crucial requirement: pehle wala record hi update hoga, duplicate nahi banega)
-function handleUpdateProfile(e) {
-  e.preventDefault();
-  if (!state.currentUser) return;
-
-  const newUsername = document.getElementById('edit-username-input').value.trim();
-  const newPassword = document.getElementById('edit-password-input').value.trim();
-  const statusEl = document.getElementById('update-profile-status');
-
-  if (!newUsername) {
-    alert('Username cannot be empty.');
-    return;
-  }
-
-  const users = getAllDatabaseUsers();
-  // Find EXACT user in database by ID
-  const existingUserIndex = users.findIndex(u => u.id === state.currentUser.id);
-
-  if (existingUserIndex !== -1) {
-    users[existingUserIndex].username = newUsername;
-    if (newPassword) {
-      users[existingUserIndex].password = newPassword;
+  // 1. Initialize Users Table
+  let users = [];
+  try {
+    const storedUsers = localStorage.getItem(DB_USERS_KEY);
+    if (storedUsers) {
+      users = JSON.parse(storedUsers);
     }
-
-    saveDatabaseUsers(users);
-    state.currentUser = users[existingUserIndex];
-
-    if (state.supabaseClient) {
-      syncProfileUpdateToSupabase(newUsername, newPassword);
-    }
-
-    renderProfileData();
-
-    if (statusEl) {
-      statusEl.classList.remove('hidden');
-      setTimeout(() => statusEl.classList.add('hidden'), 3500);
-    }
-    alert(`Success: Profile for ${state.currentUser.email} updated in database! (No duplicate created)`);
-  } else {
-    alert('User not found in database.');
+  } catch (e) {
+    console.error("Error reading users db:", e);
   }
+
+  if (!users || !Array.isArray(users) || users.length === 0) {
+    users = [CROCHIT_DATABASE.defaultUser];
+    localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
+  }
+
+  // 2. Initialize Active Session
+  let sessionUser = null;
+  try {
+    const storedSession = localStorage.getItem(DB_SESSION_KEY);
+    if (storedSession) {
+      sessionUser = JSON.parse(storedSession);
+    }
+  } catch (e) {
+    console.error("Error reading session:", e);
+  }
+
+  if (!sessionUser) {
+    sessionUser = users[0];
+    localStorage.setItem(DB_SESSION_KEY, JSON.stringify(sessionUser));
+  }
+  state.currentUser = sessionUser;
+
+  // 3. Initialize Chats Data
+  let chats = [];
+  try {
+    const storedChats = localStorage.getItem(DB_CHATS_KEY);
+    if (storedChats) {
+      chats = JSON.parse(storedChats);
+    }
+  } catch (e) {
+    console.error("Error reading chats:", e);
+  }
+
+  if (!chats || !Array.isArray(chats) || chats.length === 0) {
+    chats = JSON.parse(JSON.stringify(CROCHIT_DATABASE.chats));
+    localStorage.setItem(DB_CHATS_KEY, JSON.stringify(chats));
+  }
+  state.chatsList = chats;
+
+  // 4. Initialize Status Stories Data
+  let statuses = [];
+  try {
+    const storedStatuses = localStorage.getItem(DB_STATUSES_KEY);
+    if (storedStatuses) {
+      statuses = JSON.parse(storedStatuses);
+    }
+  } catch (e) {
+    console.error("Error reading statuses:", e);
+  }
+
+  if (!statuses || !Array.isArray(statuses) || statuses.length === 0) {
+    statuses = JSON.parse(JSON.stringify(CROCHIT_DATABASE.statuses));
+    localStorage.setItem(DB_STATUSES_KEY, JSON.stringify(statuses));
+  }
+  state.statusesList = statuses;
 }
 
+// Render Profile Data in UI
 function renderProfileData() {
   if (!state.currentUser) return;
 
   const headerAvatar = document.getElementById('header-user-avatar');
   const headerUsername = document.getElementById('header-username-text');
-  if (headerAvatar) headerAvatar.src = state.currentUser.avatar;
-  if (headerUsername) headerUsername.textContent = state.currentUser.username.split(' ')[0];
-
-  const displayAvatar = document.getElementById('profile-display-avatar');
-  const displayUsername = document.getElementById('profile-display-username');
-  const displayEmail = document.getElementById('profile-display-email');
-  const displayBio = document.getElementById('profile-display-bio');
-  const joinedDate = document.getElementById('profile-joined-date');
-  const userId = document.getElementById('profile-user-id');
-  const footerEmail = document.getElementById('footer-user-email');
-
-  if (displayAvatar) displayAvatar.src = state.currentUser.avatar;
-  if (displayUsername) displayUsername.textContent = state.currentUser.username;
-  if (displayEmail) displayEmail.textContent = state.currentUser.email;
-  if (displayBio) displayBio.textContent = state.currentUser.bio || 'Member of Crochit community.';
-  if (joinedDate) joinedDate.textContent = state.currentUser.joinedDate || 'November 2026';
-  if (userId) userId.textContent = state.currentUser.id;
-  if (footerEmail) footerEmail.textContent = state.currentUser.email;
-
+  const sidebarAvatar = document.getElementById('sidebar-profile-avatar');
+  const sidebarName = document.getElementById('sidebar-profile-name');
+  const sidebarEmail = document.getElementById('sidebar-profile-email');
+  const sidebarStatus = document.getElementById('sidebar-profile-status');
   const editUsernameInput = document.getElementById('edit-username-input');
-  const editEmailInput = document.getElementById('edit-email-input');
-  const editPasswordInput = document.getElementById('edit-password-input');
 
+  if (headerAvatar) headerAvatar.src = state.currentUser.avatar;
+  if (headerUsername) headerUsername.textContent = state.currentUser.username;
+  if (sidebarAvatar) sidebarAvatar.src = state.currentUser.avatar;
+  if (sidebarName) sidebarName.textContent = state.currentUser.username;
+  if (sidebarEmail) sidebarEmail.textContent = state.currentUser.email || 'user@crochit.app';
+  if (sidebarStatus) sidebarStatus.textContent = `"${state.currentUser.statusMessage || 'Hey there! I am using Crochit.'}"`;
   if (editUsernameInput) editUsernameInput.value = state.currentUser.username;
-  if (editEmailInput) editEmailInput.value = state.currentUser.email;
-  if (editPasswordInput) editPasswordInput.value = '';
 }
 
+// In-Place Database Update for Profile (Username & Password)
+// IMPORTANT: Updates the existing record by user ID; does NOT create duplicate records!
+function handleUpdateProfile(event) {
+  event.preventDefault();
+
+  const newUsernameInput = document.getElementById('edit-username-input');
+  const newPasswordInput = document.getElementById('edit-password-input');
+  const statusEl = document.getElementById('update-profile-status');
+
+  const newUsername = newUsernameInput ? newUsernameInput.value.trim() : '';
+  const newPassword = newPasswordInput ? newPasswordInput.value.trim() : '';
+
+  if (!newUsername) {
+    alert("Please enter a valid username.");
+    return;
+  }
+
+  // Fetch current user list from localStorage
+  let users = [];
+  try {
+    users = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
+  } catch (e) {
+    users = [];
+  }
+
+  // Find the exact index of this user in the database
+  const userIndex = users.findIndex(u => u.id === state.currentUser.id);
+
+  if (userIndex !== -1) {
+    // UPDATE IN-PLACE: Modify existing record
+    users[userIndex].username = newUsername;
+    if (newPassword) {
+      users[userIndex].password = newPassword;
+    }
+    // Sync state
+    state.currentUser = users[userIndex];
+  } else {
+    // If not found, update current user object and add to list
+    state.currentUser.username = newUsername;
+    if (newPassword) state.currentUser.password = newPassword;
+    users.push(state.currentUser);
+  }
+
+  // Persist updated records back to DB
+  localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
+  localStorage.setItem(DB_SESSION_KEY, JSON.stringify(state.currentUser));
+
+  // If Supabase cloud database is connected, update there too
+  if (state.supabaseClient && state.currentUser.email) {
+    try {
+      state.supabaseClient
+        .from('profiles')
+        .update({ username: newUsername })
+        .eq('id', state.currentUser.id)
+        .then(() => console.log("Cloud profile synced."));
+    } catch (e) {
+      console.warn("Supabase sync:", e);
+    }
+  }
+
+  // Update UI Elements
+  renderProfileData();
+
+  if (newPasswordInput) newPasswordInput.value = '';
+
+  // Show confirmation status
+  if (statusEl) {
+    statusEl.textContent = `✓ Account updated in-place (${newUsername})! No duplicate records.`;
+    statusEl.classList.remove('hidden');
+    setTimeout(() => {
+      statusEl.classList.add('hidden');
+    }, 4000);
+  }
+}
+
+// Change Avatar Prompt
 function changeAvatarPrompt() {
-  const newUrl = prompt('Enter image URL for your profile avatar:', state.currentUser.avatar);
-  if (newUrl && newUrl.trim()) {
-    const users = getAllDatabaseUsers();
+  const newAvatarUrl = prompt("Enter new Avatar Image URL (e.g. Unsplash or direct link):", state.currentUser.avatar);
+  if (newAvatarUrl && newAvatarUrl.trim() !== '') {
+    let users = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
     const idx = users.findIndex(u => u.id === state.currentUser.id);
     if (idx !== -1) {
-      users[idx].avatar = newUrl.trim();
-      saveDatabaseUsers(users);
-      state.currentUser = users[idx];
+      users[idx].avatar = newAvatarUrl.trim();
+      state.currentUser.avatar = newAvatarUrl.trim();
+      localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
+      localStorage.setItem(DB_SESSION_KEY, JSON.stringify(state.currentUser));
       renderProfileData();
     }
   }
 }
 
-// ==================== 7. SUPABASE CLOUD DATABASE CONFIG ====================
-function initSupabase() {
-  const config = localStorage.getItem(DB_SUPABASE_KEY);
-  if (config) {
-    try {
-      const { url, key } = JSON.parse(config);
-      if (url && key && window.supabase) {
-        state.supabaseClient = window.supabase.createClient(url, key);
-        const urlInput = document.getElementById('supabase-url-input');
-        const keyInput = document.getElementById('supabase-key-input');
-        if (urlInput) urlInput.value = url;
-        if (keyInput) keyInput.value = key;
-      }
-    } catch (err) {
-      console.log('Supabase init note:', err);
-    }
+// ==================== 2. SIDEBAR TAB NAVIGATION ====================
+function switchSidebarTab(tabName) {
+  state.sidebarTab = tabName;
+
+  const btnChats = document.getElementById('tab-btn-chats');
+  const btnStatus = document.getElementById('tab-btn-status');
+  const btnProfile = document.getElementById('tab-btn-profile');
+
+  const viewChats = document.getElementById('sidebar-view-chats');
+  const viewStatus = document.getElementById('sidebar-view-status');
+  const viewProfile = document.getElementById('sidebar-view-profile');
+  const searchContainer = document.getElementById('chats-search-container');
+
+  // Reset tab button styles
+  const activeClass = "px-3 py-1.5 rounded-lg bg-emerald-500 text-black font-bold flex items-center gap-1.5 transition";
+  const inactiveClass = "px-3 py-1.5 rounded-lg text-gray-400 hover:text-white flex items-center gap-1.5 transition";
+
+  if (btnChats) btnChats.className = (tabName === 'chats') ? activeClass : inactiveClass;
+  if (btnStatus) btnStatus.className = (tabName === 'status') ? activeClass : inactiveClass;
+  if (btnProfile) btnProfile.className = (tabName === 'profile') ? activeClass : inactiveClass;
+
+  // Toggle View Panes
+  if (viewChats) viewChats.classList.toggle('hidden', tabName !== 'chats');
+  if (viewStatus) viewStatus.classList.toggle('hidden', tabName !== 'status');
+  if (viewProfile) viewProfile.classList.toggle('hidden', tabName !== 'profile');
+  if (searchContainer) searchContainer.classList.toggle('hidden', tabName !== 'chats');
+
+  // Mobile layout adjustment
+  const sidebarPane = document.getElementById('chat-sidebar-pane');
+  const activePane = document.getElementById('chat-active-pane');
+  if (window.innerWidth < 768) {
+    if (sidebarPane) sidebarPane.classList.remove('hidden');
+    if (activePane) activePane.classList.add('hidden');
   }
+
+  // Refresh icons
+  if (window.lucide) lucide.createIcons();
 }
 
-function saveSupabaseConfig() {
-  const url = document.getElementById('supabase-url-input').value.trim();
-  const key = document.getElementById('supabase-key-input').value.trim();
+// ==================== 3. CONVERSATIONS & CHAT LIST ====================
+function renderConversationsList() {
+  const container = document.getElementById('conversations-list-container');
+  if (!container) return;
 
-  if (!url || !key) {
-    alert('Please enter both Supabase Project URL and Anon Key.');
+  const query = state.searchQuery.toLowerCase();
+  const filteredChats = state.chatsList.filter(chat => {
+    return chat.name.toLowerCase().includes(query) ||
+      (chat.messages && chat.messages.some(m => m.text && m.text.toLowerCase().includes(query)));
+  });
+
+  if (filteredChats.length === 0) {
+    container.innerHTML = `
+      <div class="p-6 text-center text-gray-400 space-y-2">
+        <i data-lucide="message-square-dashed" class="w-8 h-8 mx-auto text-gray-500"></i>
+        <p class="text-xs">No conversations found.</p>
+        <button onclick="openNewChatModal()" class="text-xs text-emerald-400 hover:underline font-semibold">
+          Start a new chat
+        </button>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
     return;
   }
 
-  localStorage.setItem(DB_SUPABASE_KEY, JSON.stringify({ url, key }));
-  if (window.supabase) {
-    state.supabaseClient = window.supabase.createClient(url, key);
+  let html = '';
+  filteredChats.forEach(chat => {
+    const isActive = chat.id === state.activeChatId;
+    const lastMsg = (chat.messages && chat.messages.length > 0)
+      ? chat.messages[chat.messages.length - 1]
+      : { text: "No messages yet", time: "", sender: "" };
+
+    const activeClasses = isActive
+      ? "bg-[#202c33] border-l-4 border-emerald-500"
+      : "hover:bg-[#16222a] border-l-4 border-transparent";
+
+    // Tick indicator for me
+    let tickHtml = '';
+    if (lastMsg.sender === 'me') {
+      const isRead = lastMsg.status === 'read';
+      const tickColor = isRead ? 'text-[#53bdeb]' : 'text-gray-400';
+      tickHtml = `<span class="${tickColor} text-xs font-bold mr-1">✓✓</span>`;
+    }
+
+    const unreadHtml = (chat.unreadCount && chat.unreadCount > 0 && !isActive)
+      ? `<span class="px-2 py-0.5 rounded-full bg-emerald-500 text-black text-[10px] font-bold shrink-0">${chat.unreadCount}</span>`
+      : '';
+
+    const onlineDotHtml = chat.online
+      ? `<span class="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#111b21]"></span>`
+      : '';
+
+    html += `
+      <div 
+        onclick="selectChat('${chat.id}')"
+        class="px-3.5 py-3 flex items-center gap-3 cursor-pointer transition ${activeClasses}"
+      >
+        <div class="relative shrink-0">
+          <img src="${chat.avatar}" alt="${chat.name}" class="w-11 h-11 rounded-full object-cover border border-white/10" />
+          ${onlineDotHtml}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-1 mb-0.5">
+            <h4 class="text-xs font-bold text-white truncate">${chat.name}</h4>
+            <span class="text-[10px] text-gray-400 shrink-0 font-medium">${lastMsg.time || ''}</span>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-xs text-gray-400 truncate flex items-center">
+              ${tickHtml}
+              <span class="truncate">${lastMsg.text || 'Photo / Voice'}</span>
+            </p>
+            ${unreadHtml}
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+  if (window.lucide) lucide.createIcons();
+}
+
+// Select a Chat & Open in Active Conversation Pane
+function selectChat(chatId) {
+  state.activeChatId = chatId;
+
+  const chat = state.chatsList.find(c => c.id === chatId);
+  if (!chat) return;
+
+  // Mark unread messages as read
+  chat.unreadCount = 0;
+  if (chat.messages) {
+    chat.messages.forEach(m => {
+      if (m.sender !== 'me') m.status = 'read';
+    });
+  }
+  saveChatsToStorage();
+
+  // Mobile layout switch
+  const sidebarPane = document.getElementById('chat-sidebar-pane');
+  const activePane = document.getElementById('chat-active-pane');
+  if (window.innerWidth < 768) {
+    if (sidebarPane) sidebarPane.classList.add('hidden');
+    if (activePane) {
+      activePane.classList.remove('hidden');
+      activePane.classList.add('flex');
+    }
   }
 
-  const statusEl = document.getElementById('supabase-save-status');
-  if (statusEl) {
-    statusEl.classList.remove('hidden');
-    setTimeout(() => statusEl.classList.add('hidden'), 3000);
+  // Update Active Chat Header
+  const activeAvatar = document.getElementById('active-chat-avatar');
+  const activeName = document.getElementById('active-chat-name');
+  const activeStatus = document.getElementById('active-chat-status');
+  const onlineDot = document.getElementById('active-chat-online-dot');
+
+  if (activeAvatar) activeAvatar.src = chat.avatar;
+  if (activeName) activeName.textContent = chat.name;
+  if (activeStatus) activeStatus.textContent = chat.online ? 'Online' : (chat.lastSeen || 'Offline');
+  if (onlineDot) onlineDot.classList.toggle('hidden', !chat.online);
+
+  // Render Messages
+  renderActiveChatMessages();
+  renderConversationsList();
+
+  // Focus message input
+  const input = document.getElementById('chat-message-input');
+  if (input && window.innerWidth >= 768) {
+    input.focus();
   }
-  alert('Supabase credentials saved! Users worldwide can now authenticate with cloud database on Vercel.');
+}
+
+// Mobile Back to Chats List
+function backToChatsListMobile() {
+  const sidebarPane = document.getElementById('chat-sidebar-pane');
+  const activePane = document.getElementById('chat-active-pane');
+  if (sidebarPane) sidebarPane.classList.remove('hidden');
+  if (activePane) {
+    activePane.classList.add('hidden');
+    activePane.classList.remove('flex');
+  }
+}
+
+// Render Messages for Active Chat
+function renderActiveChatMessages() {
+  const container = document.getElementById('chat-messages-container');
+  if (!container) return;
+
+  const chat = state.chatsList.find(c => c.id === state.activeChatId);
+  if (!chat || !chat.messages || chat.messages.length === 0) {
+    container.innerHTML = `
+      <div class="h-full flex flex-col items-center justify-center text-center p-6 space-y-3">
+        <div class="w-14 h-14 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+          <i data-lucide="shield-check" class="w-7 h-7"></i>
+        </div>
+        <div class="space-y-1">
+          <h4 class="font-bold text-white text-sm">End-to-End Encrypted</h4>
+          <p class="text-xs text-gray-400 max-w-xs">Messages are securely sent directly between participants on Crochit.</p>
+        </div>
+        <div class="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] text-gray-300">
+          Say hi to start the conversation! 👋
+        </div>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  let html = `
+    <div class="text-center my-3">
+      <span class="px-3 py-1 rounded-full bg-[#182229] border border-white/5 text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+        End-to-End Encrypted
+      </span>
+    </div>
+  `;
+
+  chat.messages.forEach(msg => {
+    const isMe = msg.sender === 'me';
+    const bubbleClass = isMe ? 'bubble-me text-white' : 'bubble-them text-[#e9edef]';
+    const alignClass = isMe ? 'justify-end' : 'justify-start';
+
+    // Status ticks for me
+    let tickHtml = '';
+    if (isMe) {
+      const isRead = msg.status === 'read';
+      const tickColor = isRead ? 'text-[#53bdeb]' : 'text-gray-300';
+      tickHtml = `<span class="${tickColor} text-xs font-bold">✓✓</span>`;
+    }
+
+    // Sender title for group chats
+    let groupSenderHtml = '';
+    if (chat.isGroup && !isMe) {
+      const senderName = msg.sender || 'Member';
+      groupSenderHtml = `<div class="text-[11px] font-bold text-purple-400 mb-0.5">${senderName}</div>`;
+    }
+
+    // Photo attachment preview if message has image
+    let imageAttachmentHtml = '';
+    if (msg.image) {
+      imageAttachmentHtml = `
+        <div class="mb-1.5 rounded-lg overflow-hidden border border-white/10 max-w-xs">
+          <img src="${msg.image}" alt="Attachment" class="w-full h-auto object-cover max-h-56 cursor-pointer hover:scale-[1.02] transition" onclick="window.open('${msg.image}', '_blank')" />
+        </div>
+      `;
+    }
+
+    // Voice note waveform preview if message is voice note
+    let voiceNoteHtml = '';
+    if (msg.isVoiceNote) {
+      voiceNoteHtml = `
+        <div class="flex items-center gap-3 py-1 px-1">
+          <button class="w-8 h-8 rounded-full bg-emerald-500 text-black flex items-center justify-center shrink-0">
+            <i data-lucide="play" class="w-4 h-4 fill-black"></i>
+          </button>
+          <div class="flex-1 space-y-1">
+            <div class="flex items-center gap-1 h-4">
+              <span class="w-1 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+              <span class="w-1 h-3 bg-emerald-400 rounded-full"></span>
+              <span class="w-1 h-4 bg-emerald-400 rounded-full animate-pulse"></span>
+              <span class="w-1 h-2 bg-emerald-400 rounded-full"></span>
+              <span class="w-1 h-3 bg-emerald-400 rounded-full"></span>
+              <span class="w-1 h-4 bg-emerald-400 rounded-full"></span>
+              <span class="w-1 h-2 bg-emerald-400 rounded-full"></span>
+            </div>
+            <div class="text-[10px] text-gray-300 font-mono">0:14 • Voice Message</div>
+          </div>
+        </div>
+      `;
+    }
+
+    html += `
+      <div class="flex ${alignClass} mb-2 animate-slide-up">
+        <div class="max-w-[85%] sm:max-w-[70%] px-3.5 py-2 rounded-2xl shadow-md ${bubbleClass} space-y-1 relative">
+          ${groupSenderHtml}
+          ${imageAttachmentHtml}
+          ${voiceNoteHtml}
+          ${msg.text ? `<p class="text-xs sm:text-sm leading-relaxed select-text">${escapeHtml(msg.text)}</p>` : ''}
+          <div class="flex items-center justify-end gap-1.5 text-[10px] text-gray-300/80 pt-0.5">
+            <span>${msg.time || ''}</span>
+            ${tickHtml}
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+  if (window.lucide) lucide.createIcons();
+
+  // Scroll to bottom
+  scrollToBottom();
+}
+
+// Auto Scroll helper
+function scrollToBottom() {
+  const container = document.getElementById('chat-messages-container');
+  if (container) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+// ==================== 4. SENDING & RECEIVING MESSAGES ====================
+function sendCurrentMessage() {
+  const input = document.getElementById('chat-message-input');
+  if (!input) return;
+
+  const text = input.value.trim();
+  if (!text) return;
+
+  postMessageToActiveChat({
+    text: text,
+    sender: 'me',
+    isVoiceNote: false
+  });
+
+  input.value = '';
+}
+
+// Generic Message Dispatcher
+function postMessageToActiveChat({ text, sender = 'me', image = null, isVoiceNote = false }) {
+  const chat = state.chatsList.find(c => c.id === state.activeChatId);
+  if (!chat) return;
+
+  const newMsg = {
+    id: 'msg_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    sender: sender,
+    time: getCurrentTimeFormatted(),
+    text: text || '',
+    image: image || null,
+    isVoiceNote: !!isVoiceNote,
+    status: 'delivered'
+  };
+
+  if (!chat.messages) chat.messages = [];
+  chat.messages.push(newMsg);
+
+  saveChatsToStorage();
+  renderActiveChatMessages();
+  renderConversationsList();
+
+  // Send over WebRTC Peer Connection if open
+  if (state.activePeerConn && state.activePeerConn.open) {
+    try {
+      state.activePeerConn.send({
+        type: 'chat_message',
+        chatId: chat.id,
+        senderName: state.currentUser.username,
+        message: newMsg
+      });
+    } catch (e) {
+      console.warn("Peer send error:", e);
+    }
+  }
+
+  // Broadcast to other tabs on same device
+  if (state.broadcastChannel) {
+    try {
+      state.broadcastChannel.postMessage({
+        type: 'chat_message',
+        chatId: chat.id,
+        senderName: state.currentUser.username,
+        message: newMsg
+      });
+    } catch (e) {
+      console.warn("Broadcast error:", e);
+    }
+  }
+
+  // If user sent a message to a simulated contact, trigger realistic bot reply!
+  if (sender === 'me' && (!state.activePeerConn || !state.activePeerConn.open)) {
+    triggerSimulatedReply(chat, text);
+  }
+}
+
+// Simulated Smart Reply for Default Contacts
+function triggerSimulatedReply(chat, userText) {
+  const typingIndicator = document.getElementById('typing-indicator');
+  const typingText = document.getElementById('typing-text');
+
+  if (typingIndicator) {
+    if (typingText) typingText.textContent = `${chat.name} is typing...`;
+    typingIndicator.classList.remove('hidden');
+    scrollToBottom();
+  }
+
+  setTimeout(() => {
+    if (typingIndicator) typingIndicator.classList.add('hidden');
+
+    // Mark previous user message as read (blue ticks)
+    if (chat.messages && chat.messages.length > 0) {
+      const lastMsg = chat.messages[chat.messages.length - 1];
+      if (lastMsg.sender === 'me') {
+        lastMsg.status = 'read';
+      }
+    }
+
+    // Formulate contextual reply
+    let replyText = "Awesome! Crochit pe chatting ka maza hi alag hai. Instant & zero lag! 🚀";
+    const lower = (userText || '').toLowerCase();
+
+    if (lower.includes('kaise') || lower.includes('kaisa') || lower.includes('how')) {
+      replyText = "Main ekdum badhiya hoon bhai! Tum batao, kya chal raha hai?";
+    } else if (lower.includes('meet') || lower.includes('plan') || lower.includes('kab')) {
+      replyText = "Done! Shaam 6 baje connect karte hain. Link share kar dena!";
+    } else if (lower.includes('project') || lower.includes('code') || lower.includes('git')) {
+      replyText = "Maine changes check kar liye hain, deployment ekdum solid ho gaya hai 👍";
+    } else if (lower.includes('hi') || lower.includes('hello') || lower.includes('hey')) {
+      replyText = `Hey ${state.currentUser.username || 'bro'}! Kaisa hai? Sab badhiya?`;
+    }
+
+    const replyMsg = {
+      id: 'msg_reply_' + Date.now(),
+      sender: chat.isGroup ? 'Aman' : 'them',
+      time: getCurrentTimeFormatted(),
+      text: replyText,
+      status: 'read'
+    };
+
+    chat.messages.push(replyMsg);
+    saveChatsToStorage();
+    renderActiveChatMessages();
+    renderConversationsList();
+  }, 1200);
+}
+
+// Quick Emoji Insert
+function insertQuickEmoji(emoji) {
+  const input = document.getElementById('chat-message-input');
+  if (input) {
+    input.value += emoji;
+    input.focus();
+  }
+}
+
+// Attach Sample Photo
+function attachSamplePhoto() {
+  const samplePhotos = [
+    "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&auto=format&fit=crop&q=80"
+  ];
+  const photo = samplePhotos[Math.floor(Math.random() * samplePhotos.length)];
+
+  postMessageToActiveChat({
+    text: "Check out this photo 📸",
+    sender: 'me',
+    image: photo
+  });
+}
+
+// Voice Note Simulation
+function sendVoiceNote() {
+  postMessageToActiveChat({
+    text: "",
+    sender: 'me',
+    isVoiceNote: true
+  });
+}
+
+// Clear Current Chat History
+function clearCurrentChatHistory() {
+  const chat = state.chatsList.find(c => c.id === state.activeChatId);
+  if (!chat) return;
+
+  if (confirm(`Clear all messages with ${chat.name}?`)) {
+    chat.messages = [];
+    saveChatsToStorage();
+    renderActiveChatMessages();
+    renderConversationsList();
+  }
+}
+
+// Save Chats to LocalStorage
+function saveChatsToStorage() {
+  try {
+    localStorage.setItem(DB_CHATS_KEY, JSON.stringify(state.chatsList));
+  } catch (e) {
+    console.warn("Storage quota or error saving chats:", e);
+  }
+}
+
+// Helper: Formatted Time
+function getCurrentTimeFormatted() {
+  const now = new Date();
+  let hours = now.getHours();
+  const minutes = now.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+  return `${hours}:${minutesStr} ${ampm}`;
+}
+
+// ==================== 5. REAL-TIME P2P WEBRTC (PEERJS) ====================
+function initPeerJSEngine() {
+  // Generate or retrieve persistent Peer ID
+  let peerId = localStorage.getItem('crochit_peer_id_v1');
+  if (!peerId) {
+    peerId = 'crochit-' + Math.random().toString(36).substring(2, 8);
+    localStorage.setItem('crochit_peer_id_v1', peerId);
+  }
+
+  try {
+    const peer = new Peer(peerId, {
+      debug: 1
+    });
+
+    state.peerInstance = peer;
+
+    peer.on('open', (id) => {
+      state.myPeerId = id;
+      updatePeerIdDisplay(id);
+
+      // Check URL parameters for direct invite link (?peer=XYZ)
+      const urlParams = new URLSearchParams(window.location.search);
+      const targetPeer = urlParams.get('peer');
+      if (targetPeer && targetPeer !== id) {
+        setTimeout(() => {
+          connectToPeer(targetPeer);
+        }, 800);
+      }
+    });
+
+    // Handle Incoming Peer Connection
+    peer.on('connection', (conn) => {
+      state.activePeerConn = conn;
+      setupPeerDataListeners(conn);
+      showToastNotification(`Real person connected! (ID: ${conn.peer})`);
+    });
+
+    peer.on('error', (err) => {
+      console.warn("PeerJS notice:", err);
+      updatePeerIdDisplay(peerId);
+    });
+
+  } catch (e) {
+    console.warn("PeerJS init:", e);
+    state.myPeerId = peerId;
+    updatePeerIdDisplay(peerId);
+  }
+}
+
+// Update Peer ID in UI
+function updatePeerIdDisplay(id) {
+  const headerPeerIdEl = document.getElementById('my-peer-id');
+  const modalMyIdEl = document.getElementById('modal-my-id');
+
+  if (headerPeerIdEl) headerPeerIdEl.textContent = id;
+  if (modalMyIdEl) modalMyIdEl.textContent = id;
+}
+
+// Connect to a Friend by Peer ID
+function connectToPeer(targetId) {
+  if (!state.peerInstance) {
+    alert("P2P Engine is still starting. Please try again in 2 seconds.");
+    return;
+  }
+
+  const cleanTarget = targetId.trim();
+  if (!cleanTarget) return;
+
+  const conn = state.peerInstance.connect(cleanTarget);
+  state.activePeerConn = conn;
+
+  conn.on('open', () => {
+    setupPeerDataListeners(conn);
+    showToastNotification(`Connected to friend (${cleanTarget})!`);
+
+    // Create or select conversation for this peer
+    ensureConversationForPeer(cleanTarget);
+  });
+
+  conn.on('error', (err) => {
+    alert("Connection error: " + err);
+  });
+}
+
+// Setup Data Listeners for WebRTC Connection
+function setupPeerDataListeners(conn) {
+  conn.on('data', (data) => {
+    if (data.type === 'chat_message') {
+      const incomingMsg = data.message;
+      incomingMsg.sender = 'them'; // received
+
+      // Find or create conversation for this peer
+      const targetChat = ensureConversationForPeer(conn.peer, data.senderName);
+      targetChat.messages.push(incomingMsg);
+
+      saveChatsToStorage();
+
+      if (state.activeChatId === targetChat.id) {
+        renderActiveChatMessages();
+      } else {
+        targetChat.unreadCount = (targetChat.unreadCount || 0) + 1;
+      }
+      renderConversationsList();
+      playNotificationSound();
+    }
+  });
+
+  conn.on('close', () => {
+    showToastNotification(`Peer ${conn.peer} disconnected.`);
+  });
+}
+
+// Helper: Ensure a conversation exists for a peer
+function ensureConversationForPeer(peerId, customName = null) {
+  const chatId = 'peer_' + peerId;
+  let chat = state.chatsList.find(c => c.id === chatId);
+
+  if (!chat) {
+    chat = {
+      id: chatId,
+      name: customName || `Peer (${peerId.substring(0, 10)})`,
+      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+      online: true,
+      lastSeen: "Live P2P Connection",
+      unreadCount: 0,
+      isGroup: false,
+      messages: []
+    };
+    state.chatsList.unshift(chat);
+    saveChatsToStorage();
+  }
+
+  selectChat(chatId);
+  return chat;
+}
+
+// Copy My Peer ID
+function copyMyId() {
+  const id = state.myPeerId || 'crochit-local';
+  navigator.clipboard.writeText(id).then(() => {
+    showToastNotification("✓ Peer ID copied to clipboard!");
+  }).catch(() => {
+    prompt("Copy your Crochit Peer ID:", id);
+  });
+}
+
+// Copy Direct Invite Link
+function copyInviteLink() {
+  const id = state.myPeerId || 'crochit-user';
+  const url = `${window.location.origin}${window.location.pathname}?peer=${id}`;
+  navigator.clipboard.writeText(url).then(() => {
+    showToastNotification("✓ Shareable invite link copied! Send to a friend to chat live.");
+  }).catch(() => {
+    prompt("Copy your invite link:", url);
+  });
+}
+
+// Test in New Tab (Multi-tab side-by-side chatting)
+function testInNewTab() {
+  const url = `${window.location.origin}${window.location.pathname}`;
+  window.open(url, '_blank');
+}
+
+// Broadcast Channel for Multi-Tab Instant Sync on Same Device
+function initBroadcastChannel() {
+  try {
+    state.broadcastChannel = new BroadcastChannel('crochit_p2p_channel');
+    state.broadcastChannel.onmessage = (event) => {
+      const data = event.data;
+      if (data && data.type === 'chat_message') {
+        const chat = state.chatsList.find(c => c.id === data.chatId);
+        if (chat) {
+          const remoteMsg = { ...data.message, sender: 'them' };
+          chat.messages.push(remoteMsg);
+          saveChatsToStorage();
+          if (state.activeChatId === chat.id) {
+            renderActiveChatMessages();
+          } else {
+            chat.unreadCount = (chat.unreadCount || 0) + 1;
+          }
+          renderConversationsList();
+          playNotificationSound();
+        }
+      }
+    };
+  } catch (e) {
+    console.warn("BroadcastChannel not supported:", e);
+  }
+}
+
+// ==================== 6. MODALS MANAGEMENT ====================
+// Connect Modal
+function openConnectModal() {
+  const modal = document.getElementById('connect-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeConnectModal() {
+  const modal = document.getElementById('connect-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function connectToFriendFromModal() {
+  const input = document.getElementById('friend-peer-input');
+  if (!input) return;
+
+  const targetId = input.value.trim();
+  if (!targetId) {
+    alert("Please enter friend's Crochit ID.");
+    return;
+  }
+
+  connectToPeer(targetId);
+  closeConnectModal();
+  input.value = '';
+}
+
+// New Chat Modal
+function openNewChatModal() {
+  const modal = document.getElementById('new-chat-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeNewChatModal() {
+  const modal = document.getElementById('new-chat-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function createNewConversation() {
+  const nameInput = document.getElementById('new-contact-name');
+  const isGroupInput = document.getElementById('new-chat-is-group');
+
+  const name = nameInput ? nameInput.value.trim() : '';
+  const isGroup = isGroupInput ? isGroupInput.checked : false;
+
+  if (!name) {
+    alert("Please enter a name or group title.");
+    return;
+  }
+
+  const avatar = isGroup
+    ? "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150&auto=format&fit=crop&q=80"
+    : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80";
+
+  const newChat = {
+    id: 'chat_' + Date.now(),
+    name: name,
+    avatar: avatar,
+    online: true,
+    lastSeen: isGroup ? "Group Created" : "Just Joined",
+    unreadCount: 0,
+    isGroup: isGroup,
+    messages: [
+      {
+        id: 'msg_init_' + Date.now(),
+        sender: 'them',
+        time: getCurrentTimeFormatted(),
+        text: isGroup ? `Group "${name}" created on Crochit.` : `Hi! Let's chat on Crochit.`,
+        status: 'read'
+      }
+    ]
+  };
+
+  state.chatsList.unshift(newChat);
+  saveChatsToStorage();
+  closeNewChatModal();
+  if (nameInput) nameInput.value = '';
+  if (isGroupInput) isGroupInput.checked = false;
+
+  selectChat(newChat.id);
+}
+
+// ==================== 7. 24-HOUR STATUS STORIES ====================
+function renderMiniStatusBar() {
+  const container = document.getElementById('mini-status-bar');
+  if (!container) return;
+
+  let html = '';
+  state.statusesList.forEach(status => {
+    const ringClass = status.hasUnseen ? 'status-ring-unseen' : 'status-ring-seen';
+    html += `
+      <div 
+        onclick="openStatusViewer('${status.id}')"
+        class="flex flex-col items-center gap-1 cursor-pointer shrink-0 group"
+      >
+        <div class="relative p-0.5">
+          <img 
+            src="${status.avatar}" 
+            alt="${status.userName}" 
+            class="w-10 h-10 rounded-full object-cover ${ringClass} group-hover:scale-105 transition"
+          />
+        </div>
+        <span class="text-[10px] text-gray-300 font-medium truncate max-w-[56px] text-center">
+          ${status.isMe ? 'You' : status.userName.split(' ')[0]}
+        </span>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+function renderFullStatusList() {
+  const container = document.getElementById('full-status-list');
+  if (!container) return;
+
+  let html = '';
+  state.statusesList.forEach(status => {
+    const ringClass = status.hasUnseen ? 'status-ring-unseen' : 'status-ring-seen';
+    html += `
+      <div 
+        onclick="openStatusViewer('${status.id}')"
+        class="p-3 rounded-2xl bg-[#16222a] border border-white/5 flex items-center gap-3 cursor-pointer hover:bg-white/5 transition"
+      >
+        <img src="${status.avatar}" class="w-11 h-11 rounded-full object-cover ${ringClass}" alt="${status.userName}" />
+        <div class="flex-1 min-w-0">
+          <h4 class="text-xs font-bold text-white truncate">${status.userName}</h4>
+          <p class="text-[11px] text-gray-400 truncate">${status.time}</p>
+        </div>
+        <i data-lucide="chevron-right" class="w-4 h-4 text-gray-500"></i>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+  if (window.lucide) lucide.createIcons();
+}
+
+function openStatusViewer(statusId) {
+  const status = state.statusesList.find(s => s.id === statusId);
+  if (!status) return;
+
+  const modal = document.getElementById('status-viewer-modal');
+  const avatar = document.getElementById('status-viewer-avatar');
+  const name = document.getElementById('status-viewer-name');
+  const time = document.getElementById('status-viewer-time');
+  const text = document.getElementById('status-viewer-text');
+  const progressBar = document.getElementById('status-progress-bar');
+
+  if (avatar) avatar.src = status.avatar;
+  if (name) name.textContent = status.userName;
+  if (time) time.textContent = status.time;
+  if (text) text.textContent = `"${status.textStatus || 'No text status'}"`;
+
+  if (modal) modal.classList.remove('hidden');
+
+  // Mark status seen
+  status.hasUnseen = false;
+  saveStatusesToStorage();
+  renderMiniStatusBar();
+  renderFullStatusList();
+
+  // Progress Bar Animation
+  if (progressBar) {
+    progressBar.classList.remove('duration-[4000ms]', 'w-full');
+    progressBar.classList.add('w-0');
+    setTimeout(() => {
+      progressBar.classList.add('duration-[4000ms]', 'w-full');
+    }, 50);
+  }
+
+  // Auto Close after 4 seconds
+  clearTimeout(state.statusTimer);
+  state.statusTimer = setTimeout(() => {
+    closeStatusViewer();
+  }, 4100);
+}
+
+function closeStatusViewer() {
+  clearTimeout(state.statusTimer);
+  const modal = document.getElementById('status-viewer-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function triggerAddStatusPrompt() {
+  const newText = prompt("Enter your new 24h Status Update:");
+  if (newText && newText.trim()) {
+    const myStatus = state.statusesList.find(s => s.isMe);
+    if (myStatus) {
+      myStatus.textStatus = newText.trim();
+      myStatus.time = "Just now";
+      myStatus.hasUnseen = true;
+    } else {
+      state.statusesList.unshift({
+        id: 'st_' + Date.now(),
+        userName: state.currentUser.username,
+        avatar: state.currentUser.avatar,
+        isMe: true,
+        time: "Just now",
+        hasUnseen: true,
+        textStatus: newText.trim()
+      });
+    }
+    saveStatusesToStorage();
+    renderMiniStatusBar();
+    renderFullStatusList();
+    showToastNotification("✓ Status update posted!");
+  }
+}
+
+function saveStatusesToStorage() {
+  try {
+    localStorage.setItem(DB_STATUSES_KEY, JSON.stringify(state.statusesList));
+  } catch (e) {
+    console.warn("Error saving statuses:", e);
+  }
+}
+
+// ==================== 8. CLOUD DATABASE & AUTHENTICATION ====================
+function initSupabase() {
+  try {
+    const configStr = localStorage.getItem(DB_SUPABASE_KEY);
+    if (configStr) {
+      const config = JSON.parse(configStr);
+      if (config.url && config.key && window.supabase) {
+        state.supabaseClient = window.supabase.createClient(config.url, config.key);
+        console.log("Supabase initialized successfully.");
+      }
+    }
+  } catch (e) {
+    console.warn("Supabase init notice:", e);
+  }
 }
 
 function toggleDatabaseConfigForm() {
@@ -1057,61 +1148,74 @@ function toggleDatabaseConfigForm() {
   if (box) box.classList.toggle('hidden');
 }
 
-async function syncProfileUpdateToSupabase(newUsername, newPassword) {
-  if (!state.supabaseClient) return;
-  try {
-    const updateObj = { data: { username: newUsername } };
-    if (newPassword) updateObj.password = newPassword;
-    await state.supabaseClient.auth.updateUser(updateObj);
-  } catch (e) {
-    console.log('Supabase sync note:', e);
+function saveSupabaseConfig() {
+  const urlInput = document.getElementById('supabase-url-input');
+  const keyInput = document.getElementById('supabase-key-input');
+
+  const url = urlInput ? urlInput.value.trim() : '';
+  const key = keyInput ? keyInput.value.trim() : '';
+
+  if (!url || !key) {
+    alert("Please enter both Supabase URL and Anon Key.");
+    return;
   }
+
+  localStorage.setItem(DB_SUPABASE_KEY, JSON.stringify({ url, key }));
+  initSupabase();
+  toggleDatabaseConfigForm();
+  alert("Supabase Cloud Database keys saved successfully!");
 }
 
-// ==================== 8. AUTH MODAL (SIGN IN / SIGN UP) ====================
 function openAuthModal() {
-  document.getElementById('auth-modal').classList.remove('hidden');
+  const modal = document.getElementById('auth-modal');
+  if (modal) modal.classList.remove('hidden');
 }
 
 function closeAuthModal() {
-  document.getElementById('auth-modal').classList.add('hidden');
+  const modal = document.getElementById('auth-modal');
+  if (modal) modal.classList.add('hidden');
 }
 
 function toggleAuthMode(mode) {
   state.authMode = mode;
-  const signinBtn = document.getElementById('auth-toggle-signin');
-  const signupBtn = document.getElementById('auth-toggle-signup');
-  const usernameField = document.getElementById('auth-username-field');
-  const submitBtn = document.getElementById('auth-submit-btn');
-  const title = document.getElementById('auth-modal-title');
+  const isSignIn = mode === 'signin';
 
-  if (mode === 'signup') {
-    signinBtn.className = 'flex-1 py-1.5 rounded-lg text-gray-400';
-    signupBtn.className = 'flex-1 py-1.5 rounded-lg bg-purple-600 text-white';
-    usernameField.classList.remove('hidden');
-    submitBtn.textContent = 'Create Account (Sign Up)';
-    title.textContent = 'Sign Up for Crochit';
-  } else {
-    signinBtn.className = 'flex-1 py-1.5 rounded-lg bg-purple-600 text-white';
-    signupBtn.className = 'flex-1 py-1.5 rounded-lg text-gray-400';
-    usernameField.classList.add('hidden');
-    submitBtn.textContent = 'Sign In';
-    title.textContent = 'Sign In to Crochit';
-  }
+  const btnSignIn = document.getElementById('auth-toggle-signin');
+  const btnSignUp = document.getElementById('auth-toggle-signup');
+  const userField = document.getElementById('auth-username-field');
+  const title = document.getElementById('auth-modal-title');
+  const submitBtn = document.getElementById('auth-submit-btn');
+
+  if (btnSignIn) btnSignIn.className = isSignIn ? "flex-1 py-1.5 rounded-lg bg-emerald-500 text-black font-bold" : "flex-1 py-1.5 rounded-lg text-gray-400";
+  if (btnSignUp) btnSignUp.className = !isSignIn ? "flex-1 py-1.5 rounded-lg bg-emerald-500 text-black font-bold" : "flex-1 py-1.5 rounded-lg text-gray-400";
+  if (userField) userField.classList.toggle('hidden', isSignIn);
+  if (title) title.textContent = isSignIn ? "Sign In to Crochit" : "Create Crochit Account";
+  if (submitBtn) submitBtn.textContent = isSignIn ? "Sign In" : "Sign Up";
 }
 
-async function handleAuthSubmit(e) {
-  e.preventDefault();
-  const email = document.getElementById('auth-email-input').value.trim();
-  const password = document.getElementById('auth-password-input').value.trim();
-  const username = document.getElementById('auth-username-input').value.trim() || email.split('@')[0];
+function handleAuthSubmit(event) {
+  event.preventDefault();
 
-  const users = getAllDatabaseUsers();
+  const emailInput = document.getElementById('auth-email-input');
+  const passwordInput = document.getElementById('auth-password-input');
+  const usernameInput = document.getElementById('auth-username-input');
+
+  const email = emailInput ? emailInput.value.trim() : '';
+  const password = passwordInput ? passwordInput.value.trim() : '';
+  const username = usernameInput ? usernameInput.value.trim() : 'Crochit User';
+
+  if (!email || !password) {
+    alert("Please enter email and password.");
+    return;
+  }
+
+  let users = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
 
   if (state.authMode === 'signup') {
-    const exists = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (exists) {
-      alert('An account with this email already exists. Please Sign In.');
+    // Check if user already exists
+    const existing = users.find(u => u.email === email);
+    if (existing) {
+      alert("An account with this email already exists. Please Sign In.");
       return;
     }
 
@@ -1120,122 +1224,105 @@ async function handleAuthSubmit(e) {
       username: username,
       email: email,
       password: password,
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
-      bio: "New member of Crochit 🚀",
-      joinedDate: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
+      statusMessage: "Hey there! I am using Crochit."
     };
 
     users.push(newUser);
-    saveDatabaseUsers(users);
+    localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
     state.currentUser = newUser;
-    localStorage.setItem(DB_SESSION_KEY, newUser.id);
-
-    if (state.supabaseClient) {
-      try {
-        await state.supabaseClient.auth.signUp({ email, password, options: { data: { username } } });
-      } catch (err) {
-        console.log('Supabase signup:', err);
-      }
-    }
-
-    closeAuthModal();
-    renderProfileData();
-    alert(`Welcome to Crochit, ${username}! Your account has been registered in the database.`);
+    localStorage.setItem(DB_SESSION_KEY, JSON.stringify(newUser));
+    showToastNotification(`Welcome to Crochit, ${username}!`);
   } else {
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (!user) {
-      alert('No user found with this email. Please check your credentials or click Sign Up.');
+    // Sign In: Find user in local database
+    const found = users.find(u => u.email === email && u.password === password);
+    if (!found) {
+      alert("Invalid email or password.");
       return;
     }
-    if (user.password !== password) {
-      alert('Incorrect password. Please try again.');
-      return;
-    }
+    state.currentUser = found;
+    localStorage.setItem(DB_SESSION_KEY, JSON.stringify(found));
+    showToastNotification(`Signed in as ${found.username}!`);
+  }
 
-    state.currentUser = user;
-    localStorage.setItem(DB_SESSION_KEY, user.id);
+  renderProfileData();
+  closeAuthModal();
+}
 
-    if (state.supabaseClient) {
-      try {
-        await state.supabaseClient.auth.signInWithPassword({ email, password });
-      } catch (err) {
-        console.log('Supabase signin:', err);
-      }
-    }
+// ==================== 9. CALLS & NOTIFICATIONS ====================
+function triggerVoiceCall() {
+  const chat = state.chatsList.find(c => c.id === state.activeChatId);
+  const name = chat ? chat.name : "Contact";
+  alert(`📞 Crochit Voice Call:\nCalling ${name} via secure P2P WebRTC audio stream...`);
+}
 
-    closeAuthModal();
-    renderProfileData();
-    alert(`Welcome back, ${user.username}!`);
+function triggerVideoCall() {
+  const chat = state.chatsList.find(c => c.id === state.activeChatId);
+  const name = chat ? chat.name : "Contact";
+  alert(`📹 Crochit Video Call:\nCalling ${name} via secure P2P WebRTC video stream...`);
+}
+
+function playNotificationSound() {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.08); // A5
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.25);
+  } catch (e) {
+    // Audio context may require user interaction
   }
 }
 
-// ==================== 9. NAVIGATION TABS ROUTING ====================
-function switchMainTab(tab) {
-  state.activeTab = tab;
-  const tabs = ['home', 'feed', 'chat', 'profile'];
+function showToastNotification(message) {
+  const existing = document.getElementById('crochit-toast');
+  if (existing) existing.remove();
 
-  tabs.forEach(t => {
-    const page = document.getElementById(`page-${t}`);
-    if (page) {
-      if (t === tab) {
-        page.classList.remove('hidden');
-        if (t === 'chat') page.classList.add('flex');
-      } else {
-        page.classList.add('hidden');
-        page.classList.remove('flex');
-      }
-    }
-  });
+  const toast = document.createElement('div');
+  toast.id = 'crochit-toast';
+  toast.className = "fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-emerald-500 text-black font-bold text-xs shadow-xl animate-slide-up flex items-center gap-2";
+  toast.innerHTML = `<span>${message}</span>`;
+  document.body.appendChild(toast);
 
-  const searchContainer = document.getElementById('header-search-container');
-  const headerLabel = document.getElementById('header-active-tab-label');
-
-  if (tab === 'home') {
-    if (searchContainer) searchContainer.classList.remove('hidden');
-    if (headerLabel) headerLabel.textContent = 'Home • Long Videos';
-  } else if (tab === 'feed') {
-    if (searchContainer) searchContainer.classList.add('hidden');
-    if (headerLabel) headerLabel.textContent = 'Feed • Vertical Reels';
-    // Trigger intersection observer on reels
-    setTimeout(() => setupReelsIntersectionObserver(), 100);
-  } else if (tab === 'chat') {
-    if (searchContainer) searchContainer.classList.add('hidden');
-    if (headerLabel) headerLabel.textContent = 'Chat • Live Messaging';
-  } else if (tab === 'profile') {
-    if (searchContainer) searchContainer.classList.add('hidden');
-    if (headerLabel) headerLabel.textContent = 'Profile • User & Database';
-    renderProfileData();
-  }
-
-  // Update Desktop Sidebar
-  tabs.forEach(t => {
-    const sBtn = document.getElementById(`sidebar-tab-${t}`);
-    if (sBtn) {
-      if (t === tab) {
-        sBtn.className = 'w-full flex items-center gap-3.5 px-3.5 py-3 rounded-2xl text-sm font-semibold transition text-white bg-purple-600/20 border border-purple-500/30 shadow-sm';
-      } else {
-        sBtn.className = 'w-full flex items-center gap-3.5 px-3.5 py-3 rounded-2xl text-sm font-medium transition text-gray-400 hover:text-white hover:bg-white/5';
-      }
-    }
-  });
-
-  // Update Mobile Bottom Nav Bar
-  tabs.forEach(t => {
-    const bBtn = document.getElementById(`bottom-tab-${t}`);
-    if (bBtn) {
-      if (t === tab) {
-        bBtn.className = 'flex flex-col items-center gap-1 text-purple-400' + (t === 'chat' ? ' relative' : '');
-      } else {
-        bBtn.className = 'flex flex-col items-center gap-1 text-gray-400' + (t === 'chat' ? ' relative' : '');
-      }
-    }
-  });
-
-  lucide.createIcons();
+  setTimeout(() => {
+    toast.remove();
+  }, 3500);
 }
 
-function escapeHtml(str) {
+// ==================== 10. EVENT LISTENERS ====================
+function setupEventListeners() {
+  // Enter key to send message
+  const chatInput = document.getElementById('chat-message-input');
+  if (chatInput) {
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendCurrentMessage();
+      }
+    });
+  }
+
+  // Search input filter
+  const searchInput = document.getElementById('chat-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      state.searchQuery = e.target.value;
+      renderConversationsList();
+    });
+  }
+}
+
+// Utility: HTML Sanitizer
+function escapeHtml(text) {
+  if (!text) return '';
   const div = document.createElement('div');
-  div.textContent = str;
+  div.textContent = text;
   return div.innerHTML;
 }

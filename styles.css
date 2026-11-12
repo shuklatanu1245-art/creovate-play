@@ -1,13 +1,14 @@
-/* Crochit - Modern Social Video & Chat Platform Styles */
+/* Crochit - Pure Real-Time Chat & Messenger Styles */
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
   --cro-purple: #8B5CF6;
   --cro-violet: #7C3AED;
-  --cro-accent: #A855F7;
-  --cro-dark: #090c10;
-  --cro-card: #121822;
+  --cro-dark: #0b141a;
   --wa-green: #25D366;
+  --wa-teal: #128C7E;
+  --wa-sidebar: #111b21;
+  --wa-chat-bg: #0b141a;
   --wa-bubble-me: #005c4b;
   --wa-bubble-them: #202c33;
 }
@@ -21,9 +22,9 @@
 }
 
 body {
-  background-color: #090c10;
+  background-color: #0b141a;
   color: #e9edef;
-  overflow-x: hidden;
+  overflow: hidden;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -38,11 +39,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.3);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 92, 246, 0.6);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -53,72 +54,14 @@ body {
   scrollbar-width: none;
 }
 
-/* ==================== REELS VERTICAL SNAP SCROLL FEED ==================== */
-.reels-vertical-container {
-  height: calc(100vh - 64px);
-  overflow-y: scroll;
-  scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-}
-
-@media (max-width: 768px) {
-  .reels-vertical-container {
-    height: calc(100vh - 128px); /* 64px header + 64px bottom nav */
-  }
-}
-
-.reel-slide-item {
-  height: calc(100vh - 64px);
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #000;
-}
-
-@media (max-width: 768px) {
-  .reel-slide-item {
-    height: calc(100vh - 128px);
-  }
-}
-
-/* Floating Mini-Player */
-#floating-mini-player {
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease;
-  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(139, 92, 246, 0.35), 0 0 25px rgba(139, 92, 246, 0.2);
-  backdrop-filter: blur(14px);
-}
-
-#floating-mini-player.docked-bottom-right {
-  position: fixed;
-  bottom: 76px;
-  right: 16px;
-  width: 290px;
-  max-width: 88vw;
-  border-radius: 18px;
-  z-index: 100;
-  overflow: hidden;
-  background: #111620;
-}
-
-@media (min-width: 768px) {
-  #floating-mini-player.docked-bottom-right {
-    bottom: 24px;
-    right: 24px;
-    width: 330px;
-  }
-}
-
-/* WhatsApp Pattern Chat Background */
+/* WhatsApp Pattern Chat Wallpaper Background */
 .chat-pattern-bg {
   background-color: #0b141a;
   background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 0);
   background-size: 24px 24px;
 }
 
+/* Chat bubble styling with authentic tails */
 .bubble-me {
   background-color: var(--wa-bubble-me);
   border-top-right-radius: 4px;
@@ -128,22 +71,29 @@ body {
   border-top-left-radius: 4px;
 }
 
+/* Status Story Avatar Rings */
+.status-ring-unseen {
+  box-shadow: 0 0 0 2px #111b21, 0 0 0 4px #25D366;
+}
+.status-ring-seen {
+  box-shadow: 0 0 0 2px #111b21, 0 0 0 4px #8696a0;
+}
+
 /* Animations */
 @keyframes slideUp {
-  from { transform: translateY(12px); opacity: 0; }
+  from { transform: translateY(8px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 
-@keyframes heartPop {
-  0% { transform: scale(0.6); opacity: 0; }
-  50% { transform: scale(1.3); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .animate-slide-up {
-  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.animate-heart-pop {
-  animation: heartPop 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.animate-fade-in {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
