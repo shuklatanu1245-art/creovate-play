@@ -1,4 +1,4 @@
-/* Crochit - Pure Real-Time Chat & Messenger Styles */
+/* Crochit - Pure Real-Time Chat, Voice Call & Video Call Styles */
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
@@ -6,7 +6,6 @@
   --cro-violet: #7C3AED;
   --cro-dark: #0b141a;
   --wa-green: #25D366;
-  --wa-teal: #128C7E;
   --wa-sidebar: #111b21;
   --wa-chat-bg: #0b141a;
   --wa-bubble-me: #005c4b;
@@ -61,7 +60,7 @@ body {
   background-size: 24px 24px;
 }
 
-/* Chat bubble styling with authentic tails */
+/* Chat bubble styling */
 .bubble-me {
   background-color: var(--wa-bubble-me);
   border-top-right-radius: 4px;
@@ -71,12 +70,9 @@ body {
   border-top-left-radius: 4px;
 }
 
-/* Status Story Avatar Rings */
-.status-ring-unseen {
-  box-shadow: 0 0 0 2px #111b21, 0 0 0 4px #25D366;
-}
-.status-ring-seen {
-  box-shadow: 0 0 0 2px #111b21, 0 0 0 4px #8696a0;
+/* Local Video Mirroring */
+.mirror {
+  transform: scaleX(-1);
 }
 
 /* Animations */

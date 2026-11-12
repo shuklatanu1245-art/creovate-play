@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Crochit - Pure Real-Time Messaging & Chat</title>
+  <title>Crochit - Real-Time Chat, Voice & Video Calls</title>
   
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="assets/logo.png">
@@ -19,17 +19,14 @@
             cro: {
               purple: '#8B5CF6',
               violet: '#7C3AED',
-              neon: '#A855F7',
               dark: '#0b141a',
               card: '#111b21',
               border: '#202c33'
             },
             wa: {
               green: '#25D366',
-              teal: '#128C7E',
               darkBg: '#0b141a',
               sidebarBg: '#111b21',
-              chatBg: '#0b141a',
               bubbleMe: '#005c4b',
               bubbleThem: '#202c33',
               inputBg: '#2a3942',
@@ -44,9 +41,6 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
-  <!-- PeerJS for Real-Time P2P WebRTC Chat with Real People -->
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-
   <!-- Supabase JS Client for Cloud Database & Auth -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -58,11 +52,11 @@
   <!-- ==================== TOP NAVIGATION HEADER ==================== -->
   <header class="h-16 border-b border-white/10 bg-[#111b21] px-4 sm:px-6 flex items-center justify-between shrink-0 z-40">
     <!-- Brand / Logo -->
-    <div class="flex items-center gap-3 cursor-pointer" onclick="switchSidebarTab('chats')">
+    <div class="flex items-center gap-3 cursor-pointer">
       <img 
         src="assets/logo.png" 
         alt="Crochit" 
-        class="w-9 h-9 rounded-xl object-cover shadow-lg shadow-purple-500/30 border border-purple-500/40 hover:scale-105 transition"
+        class="w-9 h-9 rounded-xl object-cover shadow-lg shadow-purple-500/20 border border-purple-500/40"
       />
       <div>
         <div class="flex items-center font-black tracking-tight text-lg leading-tight">
@@ -70,60 +64,42 @@
         </div>
         <div class="flex items-center gap-1.5 text-[10px] text-gray-400">
           <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span class="text-emerald-400 font-semibold">Real-Time Messenger</span>
+          <span id="app-conn-status" class="text-emerald-400 font-semibold">Live Messenger</span>
         </div>
       </div>
     </div>
 
-    <!-- Center: P2P Peer Connection Info -->
-    <div class="flex items-center gap-2 max-w-md">
-      <!-- Peer ID Pill (Click to copy) -->
-      <div 
-        onclick="copyMyId()" 
-        title="Click to copy your Crochit Peer ID"
-        class="cursor-pointer flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 transition"
-      >
-        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span class="text-gray-400">Your ID:</span>
-        <span id="my-peer-id" class="font-mono font-bold text-white text-xs">Connecting...</span>
-        <i data-lucide="copy" class="w-3.5 h-3.5 text-gray-400 hover:text-white"></i>
-      </div>
-
-      <!-- Invite Friend Button -->
-      <button 
-        onclick="copyInviteLink()" 
-        title="Share direct invite link with friend to chat live"
-        class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition"
-      >
-        <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
-        <span>Invite Friend</span>
-      </button>
-
-      <!-- Connect to Friend Button -->
-      <button 
-        onclick="openConnectModal()" 
-        title="Enter friend's ID to connect"
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/30 hover:bg-purple-600/40 text-purple-300 border border-purple-500/40 text-xs font-semibold transition"
-      >
-        <i data-lucide="link-2" class="w-3.5 h-3.5"></i>
-        <span>Connect</span>
-      </button>
+    <!-- Center: Global Search or Quick Status -->
+    <div class="hidden sm:flex items-center gap-2 text-xs text-gray-400 font-medium bg-[#16222a] px-3.5 py-1.5 rounded-full border border-white/5">
+      <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+      <span>Secure End-to-End Chat & Calls</span>
     </div>
 
-    <!-- Right Controls: Profile Trigger -->
-    <div class="flex items-center gap-3">
+    <!-- Right Controls: User Profile & New Chat -->
+    <div class="flex items-center gap-2.5">
+      <!-- Quick New Chat Button -->
+      <button 
+        onclick="openNewChatModal()" 
+        title="Start New Conversation"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition shadow-sm"
+      >
+        <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">New Chat</span>
+      </button>
+
+      <!-- Profile Menu Trigger -->
       <div 
-        onclick="switchSidebarTab('profile')" 
-        class="flex items-center gap-2 p-1.5 rounded-full hover:bg-white/10 cursor-pointer transition border border-transparent hover:border-purple-500/40"
+        onclick="openProfileModal()" 
+        class="flex items-center gap-2 p-1 pl-1.5 pr-2 rounded-full bg-white/5 hover:bg-white/10 cursor-pointer transition border border-white/10 hover:border-purple-500/40"
         title="View & Edit Profile"
       >
         <img 
           id="header-user-avatar" 
           src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" 
-          class="w-8 h-8 rounded-full object-cover border border-purple-500/60"
+          class="w-7 h-7 rounded-full object-cover border border-purple-500/60"
           alt="Profile"
         />
-        <span id="header-username-text" class="hidden md:inline text-xs font-bold text-gray-200">Alex</span>
+        <span id="header-username-text" class="text-xs font-bold text-gray-200 max-w-[100px] truncate">My Account</span>
       </div>
     </div>
   </header>
@@ -131,190 +107,61 @@
   <!-- ==================== MAIN MESSENGER BODY ==================== -->
   <div class="flex-1 flex overflow-hidden relative">
 
-    <!-- LEFT PANE: CHATS / STATUS / PROFILE SIDEBAR -->
+    <!-- LEFT PANE: CHATS & CONTACTS LIST -->
     <aside id="chat-sidebar-pane" class="w-full md:w-80 lg:w-96 border-r border-white/10 flex flex-col bg-[#111b21] shrink-0">
       
-      <!-- Top Sidebar Header with 3 Tabs -->
-      <div class="p-3 border-b border-white/10 bg-[#111b21] space-y-3">
+      <!-- Sidebar Header -->
+      <div class="p-3.5 border-b border-white/10 bg-[#111b21] space-y-3">
         <div class="flex items-center justify-between">
-          <!-- 3 Mode Buttons: Chats, Status, Profile -->
-          <div class="flex items-center gap-1 bg-[#16222a] p-1 rounded-xl text-xs font-semibold">
-            <button 
-              id="tab-btn-chats" 
-              onclick="switchSidebarTab('chats')" 
-              class="px-3 py-1.5 rounded-lg bg-emerald-500 text-black font-bold flex items-center gap-1.5 transition"
-            >
-              <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
-              <span>Chats</span>
-            </button>
-            <button 
-              id="tab-btn-status" 
-              onclick="switchSidebarTab('status')" 
-              class="px-3 py-1.5 rounded-lg text-gray-400 hover:text-white flex items-center gap-1.5 transition"
-            >
-              <i data-lucide="circle-dot" class="w-3.5 h-3.5"></i>
-              <span>Status</span>
-            </button>
-            <button 
-              id="tab-btn-profile" 
-              onclick="switchSidebarTab('profile')" 
-              class="px-3 py-1.5 rounded-lg text-gray-400 hover:text-white flex items-center gap-1.5 transition"
-            >
-              <i data-lucide="user" class="w-3.5 h-3.5"></i>
-              <span>Profile</span>
-            </button>
+          <div class="flex items-center gap-2">
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="message-square" class="w-4 h-4 text-emerald-400"></i>
+              Chats
+            </h2>
+            <span id="chats-count-badge" class="px-2 py-0.5 rounded-full bg-white/10 text-[10px] text-gray-300 font-semibold">0</span>
           </div>
 
-          <!-- New Chat Trigger -->
-          <button onclick="openNewChatModal()" title="Start New Chat" class="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition">
+          <button 
+            onclick="openNewChatModal()" 
+            title="New Chat" 
+            class="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition"
+          >
             <i data-lucide="edit" class="w-4 h-4"></i>
           </button>
         </div>
 
-        <!-- Search Bar (In Chats mode) -->
-        <div id="chats-search-container" class="relative">
+        <!-- Search Bar -->
+        <div class="relative">
           <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-3 top-2.5"></i>
           <input 
             id="chat-search-input" 
             type="text" 
-            placeholder="Search or start new chat..."
+            placeholder="Search chats or start new conversation..."
             class="w-full bg-[#202c33] text-xs text-gray-200 placeholder-gray-400 rounded-xl pl-9 pr-3 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-500 border border-white/5"
           />
         </div>
       </div>
 
-      <!-- VIEW A: CONVERSATIONS LIST (Default) -->
-      <div id="sidebar-view-chats" class="flex-1 flex flex-col overflow-hidden">
-        <!-- Horizontal Stories / Status Bar -->
-        <div class="px-3 py-2.5 border-b border-white/5 bg-[#0e161c] overflow-x-auto flex items-center gap-3.5 no-scrollbar shrink-0" id="mini-status-bar">
-          <!-- Populated by JS -->
-        </div>
-
-        <!-- Chats List -->
-        <div id="conversations-list-container" class="flex-1 overflow-y-auto divide-y divide-white/5">
-          <!-- Populated by JS -->
-        </div>
+      <!-- Conversations List -->
+      <div id="conversations-list-container" class="flex-1 overflow-y-auto divide-y divide-white/5">
+        <!-- Rendered by JS -->
       </div>
 
-      <!-- VIEW B: STATUS STORIES LIST -->
-      <div id="sidebar-view-status" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
-        <div class="flex items-center justify-between">
-          <h3 class="text-sm font-bold text-white flex items-center gap-2">
-            <i data-lucide="circle-dot" class="w-4 h-4 text-emerald-400"></i>
-            Status Updates
-          </h3>
-          <button onclick="triggerAddStatusPrompt()" class="px-3 py-1 rounded-lg bg-emerald-500 text-black font-bold text-xs">
-            + Add Status
-          </button>
+      <!-- Sidebar Bottom Bar: User Info & Logout -->
+      <div class="p-3 border-t border-white/10 bg-[#0e161c] flex items-center justify-between text-xs text-gray-400">
+        <div class="flex items-center gap-2 truncate">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span id="bottom-user-label" class="truncate font-medium text-gray-300">Logged in</span>
         </div>
-        <div id="full-status-list" class="space-y-3">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-
-      <!-- VIEW C: PROFILE & DATABASE SETTINGS (In-Place Update & Cloud Setup) -->
-      <div id="sidebar-view-profile" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
-        <!-- Profile Overview Card -->
-        <div class="p-4 rounded-2xl bg-[#16222a] border border-white/10 text-center space-y-2">
-          <div class="relative inline-block">
-            <img 
-              id="sidebar-profile-avatar" 
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" 
-              class="w-16 h-16 rounded-full object-cover border-2 border-purple-500 mx-auto"
-              alt="Avatar"
-            />
-            <button onclick="changeAvatarPrompt()" class="absolute bottom-0 right-0 p-1 rounded-full bg-purple-600 text-white hover:bg-purple-500 shadow">
-              <i data-lucide="camera" class="w-3 h-3"></i>
-            </button>
-          </div>
-          <h3 id="sidebar-profile-name" class="font-bold text-white text-base">Alex Rivera</h3>
-          <p id="sidebar-profile-email" class="text-xs text-gray-400 font-mono">alex@crochit.app</p>
-          <p id="sidebar-profile-status" class="text-xs text-gray-300 italic">"Hey there! I am using Crochit."</p>
-        </div>
-
-        <!-- Edit Profile Form (In-Place Database Update) -->
-        <div class="p-4 rounded-2xl bg-[#16222a] border border-white/10 space-y-3">
-          <h4 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-            <i data-lucide="user-cog" class="w-3.5 h-3.5 text-purple-400"></i>
-            Update Username & Password
-          </h4>
-          <p class="text-[11px] text-gray-400 leading-normal">
-            Database me naya account nahi banega — wahi existing account update hoga!
-          </p>
-
-          <form id="profile-edit-form" onsubmit="handleUpdateProfile(event)" class="space-y-2.5">
-            <div>
-              <label class="block text-[11px] font-semibold text-gray-300 mb-1">Username:</label>
-              <input 
-                id="edit-username-input" 
-                type="text" 
-                required
-                class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
-              />
-            </div>
-            <div>
-              <label class="block text-[11px] font-semibold text-gray-300 mb-1">New Password (optional):</label>
-              <input 
-                id="edit-password-input" 
-                type="password" 
-                placeholder="Leave blank to keep current"
-                class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
-              />
-            </div>
-            <button 
-              type="submit" 
-              class="w-full py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-90 text-white font-bold text-xs transition shadow"
-            >
-              Save Profile Changes
-            </button>
-            <span id="update-profile-status" class="block text-center text-xs font-semibold text-emerald-400 hidden">
-              ✓ Database updated in-place!
-            </span>
-          </form>
-        </div>
-
-        <!-- Cloud Database (Supabase) Setup Guide -->
-        <div class="p-4 rounded-2xl bg-[#16222a] border border-emerald-500/30 space-y-2.5 text-xs">
-          <div class="flex items-center justify-between">
-            <span class="font-bold text-white flex items-center gap-1.5">
-              <i data-lucide="database" class="w-3.5 h-3.5 text-emerald-400"></i>
-              Cloud Database (Vercel Auth)
-            </span>
-            <button onclick="toggleDatabaseConfigForm()" class="text-emerald-400 hover:underline font-semibold text-[11px]">
-              Configure
-            </button>
-          </div>
-          <p class="text-gray-400 text-[11px] leading-relaxed">
-            Internet par logon ke Sign Up aur Login ke liye free <strong class="text-emerald-400">Supabase</strong> cloud database use karein.
-          </p>
-          <div id="database-config-box" class="pt-2 border-t border-white/10 space-y-2 hidden">
-            <input 
-              id="supabase-url-input" 
-              type="text" 
-              placeholder="Supabase Project URL"
-              class="w-full bg-[#202c33] border border-white/10 rounded-lg px-2.5 py-1.5 text-[11px] text-white font-mono"
-            />
-            <input 
-              id="supabase-key-input" 
-              type="password" 
-              placeholder="Supabase Anon Key"
-              class="w-full bg-[#202c33] border border-white/10 rounded-lg px-2.5 py-1.5 text-[11px] text-white font-mono"
-            />
-            <button onclick="saveSupabaseConfig()" class="w-full py-1.5 rounded-lg bg-emerald-500 text-black font-bold text-xs">
-              Save Keys
-            </button>
-          </div>
-        </div>
-
-        <!-- Switch Account / Sign Out -->
-        <button onclick="openAuthModal()" class="w-full py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-xs">
-          Sign In with Another Account
+        <button onclick="handleLogout()" class="text-xs text-red-400 hover:text-red-300 font-semibold flex items-center gap-1">
+          <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+          <span>Logout</span>
         </button>
       </div>
 
     </aside>
 
-    <!-- RIGHT PANE: ACTIVE CONVERSATION VIEW -->
+    <!-- RIGHT PANE: ACTIVE CONVERSATION & CALLS -->
     <main id="chat-active-pane" class="hidden md:flex flex-1 flex-col h-full bg-[#0b141a] chat-pattern-bg relative">
       
       <!-- Active Chat Header -->
@@ -329,19 +176,34 @@
           </div>
           <div>
             <h3 id="active-chat-name" class="font-bold text-white text-sm">Select a chat</h3>
-            <p id="active-chat-status" class="text-xs text-emerald-400">Online</p>
+            <p id="active-chat-status" class="text-xs text-emerald-400 font-medium">Active now</p>
           </div>
         </div>
 
-        <!-- Call & Chat Actions -->
-        <div class="flex items-center gap-3 text-gray-400">
-          <button onclick="triggerVoiceCall()" title="Voice Call" class="p-2 hover:text-emerald-400 hover:bg-white/5 rounded-full transition">
-            <i data-lucide="phone" class="w-4 h-4"></i>
+        <!-- Call Buttons (Voice Call & Video Call) -->
+        <div class="flex items-center gap-2">
+          <!-- Voice Call Trigger -->
+          <button 
+            onclick="startVoiceCall()" 
+            title="Start Voice Call" 
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-emerald-500/20 text-gray-300 hover:text-emerald-400 border border-white/10 hover:border-emerald-500/40 text-xs font-semibold transition"
+          >
+            <i data-lucide="phone" class="w-4 h-4 text-emerald-400"></i>
+            <span class="hidden sm:inline">Voice Call</span>
           </button>
-          <button onclick="triggerVideoCall()" title="Video Call" class="p-2 hover:text-emerald-400 hover:bg-white/5 rounded-full transition">
-            <i data-lucide="video" class="w-4 h-4"></i>
+
+          <!-- Video Call Trigger -->
+          <button 
+            onclick="startVideoCall()" 
+            title="Start Video Call" 
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-semibold transition"
+          >
+            <i data-lucide="video" class="w-4 h-4 text-purple-400"></i>
+            <span class="hidden sm:inline">Video Call</span>
           </button>
-          <button onclick="clearCurrentChatHistory()" title="Clear Chat History" class="p-2 hover:text-red-400 hover:bg-white/5 rounded-full transition">
+
+          <!-- Clear Chat -->
+          <button onclick="clearCurrentChatHistory()" title="Clear Chat History" class="p-2 text-gray-400 hover:text-red-400 hover:bg-white/5 rounded-full transition ml-1">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
@@ -352,22 +214,16 @@
         <!-- Messages rendered here -->
       </div>
 
-      <!-- Typing Indicator -->
-      <div id="typing-indicator" class="hidden px-4 py-1 text-xs text-emerald-400 italic flex items-center gap-2">
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-        <span id="typing-text">Friend is typing...</span>
-      </div>
-
       <!-- Chat Message Input Bar -->
       <div class="p-3 bg-[#111b21] border-t border-white/10 flex items-center gap-2 shrink-0">
         <!-- Emoji button -->
-        <button onclick="insertQuickEmoji('😊')" class="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-full transition">
+        <button onclick="insertQuickEmoji('😊')" title="Insert Emoji" class="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-full transition">
           <i data-lucide="smile" class="w-5 h-5"></i>
         </button>
 
-        <!-- Attachment button (Simulate photo sharing) -->
+        <!-- Attachment button -->
         <button onclick="attachSamplePhoto()" title="Send Photo" class="p-2 text-gray-400 hover:text-purple-400 hover:bg-white/5 rounded-full transition">
-          <i data-lucide="paperclip" class="w-5 h-5"></i>
+          <i data-lucide="image" class="w-5 h-5"></i>
         </button>
 
         <!-- Text Input -->
@@ -378,8 +234,8 @@
           class="flex-1 bg-[#2a3942] border-0 text-white placeholder-gray-400 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
         />
 
-        <!-- Voice Note Simulation -->
-        <button id="voice-note-btn" onclick="sendVoiceNote()" title="Hold or click to send voice note" class="p-2 text-gray-400 hover:text-emerald-400 hover:bg-white/5 rounded-full transition">
+        <!-- Voice Note Button -->
+        <button id="voice-note-btn" onclick="sendVoiceNote()" title="Send Voice Note" class="p-2 text-gray-400 hover:text-emerald-400 hover:bg-white/5 rounded-full transition">
           <i data-lucide="mic" class="w-5 h-5"></i>
         </button>
 
@@ -387,6 +243,7 @@
         <button 
           id="send-message-btn" 
           onclick="sendCurrentMessage()"
+          title="Send"
           class="p-2.5 bg-emerald-500 hover:bg-emerald-600 text-black rounded-full transition shadow-md shadow-emerald-500/20"
         >
           <i data-lucide="send" class="w-4 h-4 fill-black"></i>
@@ -397,56 +254,172 @@
 
   </div>
 
-  <!-- ==================== MODAL: CONNECT WITH REAL PERSON (PEERJS) ==================== -->
-  <div id="connect-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
-    <div class="bg-[#111b21] border border-white/10 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+  <!-- ==================== MODAL: INTERACTIVE VOICE CALL ==================== -->
+  <div id="voice-call-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-[#111b21] border border-white/10 rounded-3xl w-full max-w-sm p-8 flex flex-col items-center text-center space-y-6 shadow-2xl relative animate-slide-up">
+      <div class="relative mt-2">
+        <img id="voice-call-avatar" src="" class="w-24 h-24 rounded-full object-cover border-4 border-emerald-500 shadow-xl shadow-emerald-500/20" alt="Avatar">
+        <span class="absolute -inset-2 rounded-full border-2 border-emerald-500/40 animate-ping"></span>
+      </div>
+      <div class="space-y-1">
+        <h3 id="voice-call-name" class="font-bold text-white text-lg">Calling...</h3>
+        <p id="voice-call-status" class="text-xs text-emerald-400 font-mono font-medium">Connecting audio stream...</p>
+      </div>
+
+      <!-- Pulsing Audio Waveform Visualizer -->
+      <div class="flex items-center justify-center gap-1.5 h-8">
+        <span class="w-1.5 h-3 bg-emerald-400 rounded-full animate-pulse"></span>
+        <span class="w-1.5 h-6 bg-emerald-400 rounded-full animate-bounce"></span>
+        <span class="w-1.5 h-8 bg-emerald-400 rounded-full animate-pulse"></span>
+        <span class="w-1.5 h-4 bg-emerald-400 rounded-full animate-bounce"></span>
+        <span class="w-1.5 h-7 bg-emerald-400 rounded-full animate-pulse"></span>
+        <span class="w-1.5 h-5 bg-emerald-400 rounded-full animate-bounce"></span>
+        <span class="w-1.5 h-3 bg-emerald-400 rounded-full animate-pulse"></span>
+      </div>
+
+      <!-- Controls -->
+      <div class="flex items-center gap-5 pt-4">
+        <!-- Mute Button -->
+        <button id="voice-mute-btn" onclick="toggleVoiceMute()" class="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+          <i data-lucide="mic" class="w-5 h-5"></i>
+        </button>
+
+        <!-- End Call Button -->
+        <button onclick="endVoiceCall()" class="w-14 h-14 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition shadow-lg shadow-red-600/30">
+          <i data-lucide="phone-off" class="w-6 h-6"></i>
+        </button>
+
+        <!-- Speaker Button -->
+        <button onclick="toggleSpeaker()" class="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+          <i data-lucide="volume-2" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: INTERACTIVE VIDEO CALL ==================== -->
+  <div id="video-call-modal" class="fixed inset-0 z-50 bg-black/95 hidden flex flex-col justify-between p-4 sm:p-6">
+    <!-- Top Call Bar -->
+    <div class="flex items-center justify-between text-white z-10">
+      <div class="flex items-center gap-3 bg-[#111b21]/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10">
+        <img id="video-call-header-avatar" src="" class="w-8 h-8 rounded-full object-cover border border-purple-500" alt="Avatar">
+        <div>
+          <h4 id="video-call-header-name" class="text-xs font-bold">Contact</h4>
+          <span id="video-call-timer" class="text-[10px] text-emerald-400 font-mono font-bold">00:00</span>
+        </div>
+      </div>
+      <span class="px-3 py-1 rounded-full bg-white/10 text-[11px] font-semibold flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        HD Video Call
+      </span>
+    </div>
+
+    <!-- Center Stage: Video Feeds -->
+    <div class="flex-1 relative flex items-center justify-center my-4 overflow-hidden rounded-3xl border border-white/10 bg-[#0e161c]">
+      <!-- Remote Video (Simulated Feed or Peer Stream) -->
+      <div id="remote-video-container" class="w-full h-full flex flex-col items-center justify-center relative">
+        <img id="video-remote-avatar" src="" class="w-32 h-32 rounded-full object-cover border-4 border-purple-500/50 shadow-2xl mb-4" alt="Remote">
+        <h3 id="video-remote-name" class="text-lg font-bold text-white">Contact</h3>
+        <p class="text-xs text-gray-400 mt-1 font-mono">Encrypted Video Stream</p>
+      </div>
+
+      <!-- Local User Camera Feed (Picture-in-Picture) -->
+      <div class="absolute bottom-4 right-4 w-32 sm:w-48 h-44 sm:h-64 rounded-2xl overflow-hidden border-2 border-white/20 bg-black shadow-2xl z-20">
+        <video id="local-camera-feed" autoplay playsinline muted class="w-full h-full object-cover mirror"></video>
+        <div class="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 text-[9px] text-white font-semibold">
+          You
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Controls -->
+    <div class="flex items-center justify-center gap-4 z-10 pb-2">
+      <!-- Toggle Mic -->
+      <button id="video-mute-mic-btn" onclick="toggleVideoMic()" class="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+        <i data-lucide="mic" class="w-5 h-5"></i>
+      </button>
+
+      <!-- Toggle Camera -->
+      <button id="video-toggle-cam-btn" onclick="toggleVideoCam()" class="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+        <i data-lucide="video" class="w-5 h-5"></i>
+      </button>
+
+      <!-- End Call -->
+      <button onclick="endVideoCall()" class="w-14 h-14 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition shadow-lg shadow-red-600/30">
+        <i data-lucide="phone-off" class="w-6 h-6"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: USER PROFILE & SETTINGS ==================== -->
+  <div id="profile-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-[#111b21] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-5 shadow-2xl">
       <div class="flex items-center justify-between border-b border-white/10 pb-3">
         <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-            <i data-lucide="radio" class="w-4 h-4"></i>
-          </div>
-          <h3 class="font-bold text-white text-base">Connect with Real Person</h3>
+          <i data-lucide="user" class="w-5 h-5 text-purple-400"></i>
+          <h3 class="font-bold text-white text-base">Account Profile</h3>
         </div>
-        <button onclick="closeConnectModal()" class="text-gray-400 hover:text-white">
-          <i data-lucide="x" class="w-4 h-4"></i>
+        <button onclick="closeProfileModal()" class="text-gray-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
 
-      <!-- My ID Display -->
-      <div class="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
-        <span class="text-xs text-gray-400 font-medium">Your Crochit Peer ID:</span>
-        <div class="flex items-center justify-between">
-          <span id="modal-my-id" class="font-mono text-sm font-bold text-emerald-400 select-all">Connecting...</span>
-          <button onclick="copyMyId()" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold">
-            Copy ID
-          </button>
-        </div>
-      </div>
-
-      <!-- Connect to Friend by ID -->
-      <div class="space-y-2">
-        <label class="text-xs font-semibold text-gray-300">Enter Friend's Crochit ID:</label>
-        <div class="flex gap-2">
-          <input 
-            id="friend-peer-input" 
-            type="text" 
-            placeholder="e.g. crochit-xyz123"
-            class="flex-1 bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 font-mono"
+      <!-- Avatar & Account Header -->
+      <div class="text-center space-y-2">
+        <div class="relative inline-block">
+          <img 
+            id="modal-profile-avatar" 
+            src="" 
+            class="w-20 h-20 rounded-full object-cover border-2 border-purple-500 mx-auto"
+            alt="Avatar"
           />
-          <button 
-            onclick="connectToFriendFromModal()" 
-            class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition shadow"
-          >
-            Connect
+          <button onclick="changeAvatarPrompt()" title="Change Avatar" class="absolute bottom-0 right-0 p-1.5 rounded-full bg-purple-600 text-white hover:bg-purple-500 shadow">
+            <i data-lucide="camera" class="w-3.5 h-3.5"></i>
           </button>
         </div>
+        <h3 id="modal-profile-name" class="font-bold text-white text-base">User Name</h3>
+        <p id="modal-profile-email" class="text-xs text-gray-400 font-mono">user@example.com</p>
       </div>
 
-      <!-- Multi-tab / Direct Link Helper -->
-      <div class="pt-2 border-t border-white/10 flex items-center justify-between text-xs">
-        <span class="text-gray-400">Want to test right now?</span>
-        <button onclick="testInNewTab()" class="text-emerald-400 hover:text-emerald-300 font-semibold underline">
-          Open 2nd Tab to chat with yourself
+      <!-- Edit Form -->
+      <form id="profile-edit-form" onsubmit="handleUpdateProfile(event)" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-300 mb-1">Username:</label>
+          <input 
+            id="edit-username-input" 
+            type="text" 
+            required
+            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-300 mb-1">New Password (optional):</label>
+          <input 
+            id="edit-password-input" 
+            type="password" 
+            placeholder="Leave blank to keep unchanged"
+            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+          />
+        </div>
+        <button 
+          type="submit" 
+          class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition shadow"
+        >
+          Save Changes
+        </button>
+        <span id="update-profile-status" class="block text-center text-xs font-semibold text-emerald-400 hidden">
+          ✓ Profile updated successfully!
+        </span>
+      </form>
+
+      <!-- Logout Button -->
+      <div class="pt-2 border-t border-white/10 flex items-center justify-between">
+        <button onclick="handleLogout()" class="text-xs text-red-400 hover:text-red-300 font-semibold flex items-center gap-1.5">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+          <span>Sign Out of Account</span>
+        </button>
+        <button onclick="closeProfileModal()" class="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-semibold">
+          Close
         </button>
       </div>
     </div>
@@ -469,7 +442,7 @@
             id="new-contact-name" 
             type="text" 
             placeholder="e.g. Sarah Connor, Tech Project Group..."
-            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white"
+            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500"
           />
         </div>
         <div class="flex items-center gap-2">
@@ -478,7 +451,7 @@
         </div>
         <button 
           onclick="createNewConversation()" 
-          class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition"
+          class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition shadow"
         >
           Start Chatting
         </button>
@@ -486,62 +459,34 @@
     </div>
   </div>
 
-  <!-- ==================== MODAL: 24H STATUS VIEWER ==================== -->
-  <div id="status-viewer-modal" class="fixed inset-0 z-50 bg-black hidden flex items-center justify-center">
-    <div class="relative w-full max-w-sm h-full flex flex-col justify-between p-4">
-      <div class="h-1 bg-white/30 rounded-full overflow-hidden mb-3">
-        <div id="status-progress-bar" class="h-full bg-emerald-400 w-0 transition-all duration-[4000ms] ease-linear"></div>
-      </div>
-      <div class="flex items-center justify-between text-white z-10">
-        <div class="flex items-center gap-2">
-          <img id="status-viewer-avatar" src="" class="w-8 h-8 rounded-full object-cover border border-emerald-400" alt="Avatar">
-          <div>
-            <h4 id="status-viewer-name" class="text-xs font-bold">User</h4>
-            <span id="status-viewer-time" class="text-[10px] text-gray-300">Just now</span>
-          </div>
-        </div>
-        <button onclick="closeStatusViewer()" class="p-1 hover:bg-white/20 rounded-full">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-      <div class="flex-1 flex items-center justify-center p-6 text-center">
-        <p id="status-viewer-text" class="text-xl font-bold text-white leading-relaxed">
-          Status text
-        </p>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== MODAL: SIGN IN / SIGN UP ==================== -->
-  <div id="auth-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm hidden flex items-center justify-center p-4">
-    <div class="bg-[#111b21] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-white/10 pb-3">
-        <div class="flex items-center gap-2">
-          <img src="assets/logo.png" class="w-7 h-7 rounded-lg" alt="Crochit">
-          <h3 id="auth-modal-title" class="font-bold text-white text-base">Sign In to Crochit</h3>
-        </div>
-        <button onclick="closeAuthModal()" class="text-gray-400 hover:text-white">
-          <i data-lucide="x" class="w-4 h-4"></i>
-        </button>
+  <!-- ==================== MODAL: SIGN IN / SIGN UP (DATABASE AUTH) ==================== -->
+  <div id="auth-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-[#111b21] border border-white/10 rounded-3xl w-full max-w-md p-6 sm:p-8 space-y-5 shadow-2xl">
+      <div class="text-center space-y-2">
+        <img src="assets/logo.png" class="w-12 h-12 rounded-2xl mx-auto shadow-lg shadow-purple-500/30" alt="Crochit">
+        <h3 id="auth-modal-title" class="font-bold text-white text-xl">Sign In to Crochit</h3>
+        <p class="text-xs text-gray-400">Pure real-time chat, voice & video calls</p>
       </div>
 
+      <!-- Mode Toggle (Sign In / Sign Up) -->
       <div class="flex bg-[#16222a] p-1 rounded-xl text-xs font-semibold">
-        <button id="auth-toggle-signin" onclick="toggleAuthMode('signin')" class="flex-1 py-1.5 rounded-lg bg-emerald-500 text-black font-bold">
+        <button id="auth-toggle-signin" onclick="toggleAuthMode('signin')" class="flex-1 py-2 rounded-lg bg-emerald-500 text-black font-bold transition">
           Sign In
         </button>
-        <button id="auth-toggle-signup" onclick="toggleAuthMode('signup')" class="flex-1 py-1.5 rounded-lg text-gray-400">
+        <button id="auth-toggle-signup" onclick="toggleAuthMode('signup')" class="flex-1 py-2 rounded-lg text-gray-400 hover:text-white transition">
           Sign Up
         </button>
       </div>
 
-      <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="space-y-3">
+      <!-- Auth Form -->
+      <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="space-y-3.5">
         <div id="auth-username-field" class="hidden">
           <label class="block text-xs font-semibold text-gray-300 mb-1">Full Username:</label>
           <input 
             id="auth-username-input" 
             type="text" 
             placeholder="e.g. Alex Rivera"
-            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white"
+            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
           />
         </div>
         <div>
@@ -550,8 +495,8 @@
             id="auth-email-input" 
             type="email" 
             required
-            placeholder="alex@example.com"
-            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white"
+            placeholder="you@example.com"
+            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
           />
         </div>
         <div>
@@ -561,13 +506,13 @@
             type="password" 
             required
             placeholder="••••••••"
-            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white"
+            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
           />
         </div>
         <button 
           id="auth-submit-btn" 
           type="submit" 
-          class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition shadow mt-2"
+          class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition shadow-lg shadow-emerald-500/20 mt-2"
         >
           Sign In
         </button>
