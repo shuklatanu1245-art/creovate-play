@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Crochit - Real-Time Chat, Voice & Video Calls</title>
+  <title>Crochit - Real-Time Chat, Voice & Video Calls (E2EE)</title>
   
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="assets/logo.png">
@@ -69,10 +69,14 @@
       </div>
     </div>
 
-    <!-- Center: Global Search or Quick Status -->
-    <div class="hidden sm:flex items-center gap-2 text-xs text-gray-400 font-medium bg-[#16222a] px-3.5 py-1.5 rounded-full border border-white/5">
+    <!-- Center: Global E2EE Status Badge -->
+    <div 
+      onclick="openSecurityVerifyModal()"
+      class="hidden sm:flex items-center gap-2 text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-3.5 py-1.5 rounded-full border border-emerald-500/30 cursor-pointer hover:bg-emerald-500/20 transition"
+      title="Click to view End-to-End Encryption details"
+    >
       <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
-      <span>Secure End-to-End Chat & Calls</span>
+      <span>🔒 End-to-End Encrypted (Chat, Voice & Video)</span>
     </div>
 
     <!-- Right Controls: User Profile & New Chat -->
@@ -175,7 +179,13 @@
             <span id="active-chat-online-dot" class="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#111b21]"></span>
           </div>
           <div>
-            <h3 id="active-chat-name" class="font-bold text-white text-sm">Select a chat</h3>
+            <div class="flex items-center gap-2">
+              <h3 id="active-chat-name" class="font-bold text-white text-sm">Select a chat</h3>
+              <div onclick="openSecurityVerifyModal()" class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[10px] font-semibold cursor-pointer border border-emerald-500/30 transition" title="Click to verify 256-bit End-to-End Encryption">
+                <i data-lucide="lock" class="w-2.5 h-2.5"></i>
+                <span>E2EE</span>
+              </div>
+            </div>
             <p id="active-chat-status" class="text-xs text-emerald-400 font-medium">Active now</p>
           </div>
         </div>
@@ -185,7 +195,7 @@
           <!-- Voice Call Trigger -->
           <button 
             onclick="startVoiceCall()" 
-            title="Start Voice Call" 
+            title="Start End-to-End Encrypted Voice Call" 
             class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-emerald-500/20 text-gray-300 hover:text-emerald-400 border border-white/10 hover:border-emerald-500/40 text-xs font-semibold transition"
           >
             <i data-lucide="phone" class="w-4 h-4 text-emerald-400"></i>
@@ -195,15 +205,20 @@
           <!-- Video Call Trigger -->
           <button 
             onclick="startVideoCall()" 
-            title="Start Video Call" 
+            title="Start End-to-End Encrypted Video Call" 
             class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-semibold transition"
           >
             <i data-lucide="video" class="w-4 h-4 text-purple-400"></i>
             <span class="hidden sm:inline">Video Call</span>
           </button>
 
+          <!-- Security Code Verification -->
+          <button onclick="openSecurityVerifyModal()" title="Verify Encryption Safety Code" class="p-2 text-gray-400 hover:text-emerald-400 hover:bg-white/5 rounded-full transition">
+            <i data-lucide="shield-check" class="w-4 h-4"></i>
+          </button>
+
           <!-- Clear Chat -->
-          <button onclick="clearCurrentChatHistory()" title="Clear Chat History" class="p-2 text-gray-400 hover:text-red-400 hover:bg-white/5 rounded-full transition ml-1">
+          <button onclick="clearCurrentChatHistory()" title="Clear Chat History" class="p-2 text-gray-400 hover:text-red-400 hover:bg-white/5 rounded-full transition">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
@@ -230,12 +245,12 @@
         <input 
           id="chat-message-input" 
           type="text" 
-          placeholder="Type a message..."
+          placeholder="Type an end-to-end encrypted message..."
           class="flex-1 bg-[#2a3942] border-0 text-white placeholder-gray-400 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
         />
 
         <!-- Voice Note Button -->
-        <button id="voice-note-btn" onclick="sendVoiceNote()" title="Send Voice Note" class="p-2 text-gray-400 hover:text-emerald-400 hover:bg-white/5 rounded-full transition">
+        <button id="voice-note-btn" onclick="sendVoiceNote()" title="Send Encrypted Voice Note" class="p-2 text-gray-400 hover:text-emerald-400 hover:bg-white/5 rounded-full transition">
           <i data-lucide="mic" class="w-5 h-5"></i>
         </button>
 
@@ -243,7 +258,7 @@
         <button 
           id="send-message-btn" 
           onclick="sendCurrentMessage()"
-          title="Send"
+          title="Send Encrypted"
           class="p-2.5 bg-emerald-500 hover:bg-emerald-600 text-black rounded-full transition shadow-md shadow-emerald-500/20"
         >
           <i data-lucide="send" class="w-4 h-4 fill-black"></i>
@@ -254,16 +269,23 @@
 
   </div>
 
-  <!-- ==================== MODAL: INTERACTIVE VOICE CALL ==================== -->
+  <!-- ==================== MODAL: INTERACTIVE VOICE CALL (E2EE) ==================== -->
   <div id="voice-call-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4">
-    <div class="bg-[#111b21] border border-white/10 rounded-3xl w-full max-w-sm p-8 flex flex-col items-center text-center space-y-6 shadow-2xl relative animate-slide-up">
-      <div class="relative mt-2">
+    <div class="bg-[#111b21] border border-white/10 rounded-3xl w-full max-w-sm p-8 flex flex-col items-center text-center space-y-5 shadow-2xl relative animate-slide-up">
+      
+      <!-- E2EE Call Badge -->
+      <div class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold">
+        <i data-lucide="lock" class="w-3 h-3 text-emerald-400"></i>
+        <span>E2EE 256-Bit Encrypted Audio</span>
+      </div>
+
+      <div class="relative mt-1">
         <img id="voice-call-avatar" src="" class="w-24 h-24 rounded-full object-cover border-4 border-emerald-500 shadow-xl shadow-emerald-500/20" alt="Avatar">
         <span class="absolute -inset-2 rounded-full border-2 border-emerald-500/40 animate-ping"></span>
       </div>
       <div class="space-y-1">
         <h3 id="voice-call-name" class="font-bold text-white text-lg">Calling...</h3>
-        <p id="voice-call-status" class="text-xs text-emerald-400 font-mono font-medium">Connecting audio stream...</p>
+        <p id="voice-call-status" class="text-xs text-emerald-400 font-mono font-medium">Connecting secure stream...</p>
       </div>
 
       <!-- Pulsing Audio Waveform Visualizer -->
@@ -278,7 +300,7 @@
       </div>
 
       <!-- Controls -->
-      <div class="flex items-center gap-5 pt-4">
+      <div class="flex items-center gap-5 pt-3">
         <!-- Mute Button -->
         <button id="voice-mute-btn" onclick="toggleVoiceMute()" class="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
           <i data-lucide="mic" class="w-5 h-5"></i>
@@ -297,7 +319,7 @@
     </div>
   </div>
 
-  <!-- ==================== MODAL: INTERACTIVE VIDEO CALL ==================== -->
+  <!-- ==================== MODAL: INTERACTIVE VIDEO CALL (E2EE) ==================== -->
   <div id="video-call-modal" class="fixed inset-0 z-50 bg-black/95 hidden flex flex-col justify-between p-4 sm:p-6">
     <!-- Top Call Bar -->
     <div class="flex items-center justify-between text-white z-10">
@@ -308,25 +330,31 @@
           <span id="video-call-timer" class="text-[10px] text-emerald-400 font-mono font-bold">00:00</span>
         </div>
       </div>
-      <span class="px-3 py-1 rounded-full bg-white/10 text-[11px] font-semibold flex items-center gap-1.5">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        HD Video Call
+      
+      <!-- E2EE Stream Badge -->
+      <span class="px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 shadow-lg">
+        <i data-lucide="lock" class="w-3.5 h-3.5 text-emerald-400"></i>
+        <span>🔒 E2EE 256-Bit Encrypted Video</span>
       </span>
     </div>
 
     <!-- Center Stage: Video Feeds -->
     <div class="flex-1 relative flex items-center justify-center my-4 overflow-hidden rounded-3xl border border-white/10 bg-[#0e161c]">
-      <!-- Remote Video (Simulated Feed or Peer Stream) -->
+      <!-- Remote Video (Encrypted Stream Feed) -->
       <div id="remote-video-container" class="w-full h-full flex flex-col items-center justify-center relative">
         <img id="video-remote-avatar" src="" class="w-32 h-32 rounded-full object-cover border-4 border-purple-500/50 shadow-2xl mb-4" alt="Remote">
         <h3 id="video-remote-name" class="text-lg font-bold text-white">Contact</h3>
-        <p class="text-xs text-gray-400 mt-1 font-mono">Encrypted Video Stream</p>
+        <div class="flex items-center gap-1.5 text-xs text-emerald-400 font-mono mt-1">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+          <span>DTLS-SRTP AES-256 Encrypted</span>
+        </div>
       </div>
 
       <!-- Local User Camera Feed (Picture-in-Picture) -->
       <div class="absolute bottom-4 right-4 w-32 sm:w-48 h-44 sm:h-64 rounded-2xl overflow-hidden border-2 border-white/20 bg-black shadow-2xl z-20">
         <video id="local-camera-feed" autoplay playsinline muted class="w-full h-full object-cover mirror"></video>
-        <div class="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 text-[9px] text-white font-semibold">
+        <div class="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 text-[9px] text-white font-semibold flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
           You
         </div>
       </div>
@@ -347,6 +375,72 @@
       <!-- End Call -->
       <button onclick="endVideoCall()" class="w-14 h-14 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition shadow-lg shadow-red-600/30">
         <i data-lucide="phone-off" class="w-6 h-6"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: VERIFY END-TO-END ENCRYPTION ==================== -->
+  <div id="security-verify-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-[#111b21] border border-white/10 rounded-3xl w-full max-w-md p-6 sm:p-7 space-y-5 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-white/10 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <i data-lucide="lock" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-white text-base">Verify Security Code</h3>
+            <p class="text-[11px] text-gray-400">End-to-End Encryption Verification</p>
+          </div>
+        </div>
+        <button onclick="closeSecurityVerifyModal()" class="text-gray-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="text-center space-y-2">
+        <img id="verify-contact-avatar" src="" class="w-14 h-14 rounded-full object-cover border-2 border-emerald-500 mx-auto" alt="Contact">
+        <h4 id="verify-contact-name" class="font-bold text-white text-sm">Contact Name</h4>
+        <p class="text-[11px] text-gray-300 max-w-sm mx-auto leading-relaxed">
+          Messages, voice notes, audio calls, and video calls with this contact are end-to-end encrypted. No one outside of this chat, not even Crochit, can read or listen to them.
+        </p>
+      </div>
+
+      <!-- 60-Digit Safety Number Grid (12 Blocks of 5 digits) -->
+      <div class="p-4 rounded-2xl bg-[#16222a] border border-white/5 space-y-3">
+        <div class="flex items-center justify-between text-[11px] text-gray-400">
+          <span class="font-semibold text-emerald-400 flex items-center gap-1">
+            <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+            Safety Number
+          </span>
+          <span class="font-mono text-gray-400">AES-256-GCM</span>
+        </div>
+        <div id="safety-numbers-grid" class="grid grid-cols-3 sm:grid-cols-4 gap-2 font-mono text-xs text-white text-center select-all">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Security Protocol Specs -->
+      <div class="space-y-1.5 text-[11px] text-gray-400 bg-white/5 p-3 rounded-xl border border-white/5">
+        <div class="flex items-center justify-between">
+          <span>💬 Chat Encryption:</span>
+          <span class="font-mono text-emerald-400">AES-GCM-256 (WebCrypto Subtle)</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span>📞 Voice Call Encryption:</span>
+          <span class="font-mono text-emerald-400">DTLS-SRTP 256-Bit</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span>📹 Video Call Encryption:</span>
+          <span class="font-mono text-emerald-400">DTLS-SRTP AES-256</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span>🔑 Key Exchange:</span>
+          <span class="font-mono text-purple-400">ECDH (Curve P-256)</span>
+        </div>
+      </div>
+
+      <button onclick="closeSecurityVerifyModal()" class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition shadow">
+        ✓ Confirmed Secure
       </button>
     </div>
   </div>
@@ -465,7 +559,7 @@
       <div class="text-center space-y-2">
         <img src="assets/logo.png" class="w-12 h-12 rounded-2xl mx-auto shadow-lg shadow-purple-500/30" alt="Crochit">
         <h3 id="auth-modal-title" class="font-bold text-white text-xl">Sign In to Crochit</h3>
-        <p class="text-xs text-gray-400">Pure real-time chat, voice & video calls</p>
+        <p class="text-xs text-gray-400">Pure real-time chat, voice & video calls (E2EE)</p>
       </div>
 
       <!-- Mode Toggle (Sign In / Sign Up) -->
