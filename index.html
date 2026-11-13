@@ -581,32 +581,33 @@
   </div>
 
   <!-- ==================== MODAL: SIGN IN / SIGN UP (DATABASE AUTH) ==================== -->
-  <div id="auth-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+  <div id="auth-modal" class="fixed inset-0 z-50 bg-[#0b141a]/95 backdrop-blur-md flex items-center justify-center p-4">
     <div class="bg-[#111b21] border border-white/10 rounded-3xl w-full max-w-md p-6 sm:p-8 space-y-5 shadow-2xl">
       <div class="text-center space-y-2">
         <img src="assets/logo.png" class="w-12 h-12 rounded-2xl mx-auto shadow-lg shadow-purple-500/30" alt="Crochit">
-        <h3 id="auth-modal-title" class="font-bold text-white text-xl">Sign In to Crochit</h3>
-        <p class="text-xs text-gray-400">Pure real-time chat, voice & video calls (E2EE)</p>
+        <h3 id="auth-modal-title" class="font-bold text-white text-xl">Create Your Crochit Account</h3>
+        <p class="text-xs text-gray-400">100% End-to-End Encrypted Chat, Voice & Video Calls</p>
       </div>
 
-      <!-- Mode Toggle (Sign In / Sign Up) -->
+      <!-- Mode Toggle (Sign Up / Sign In) -->
       <div class="flex bg-[#16222a] p-1 rounded-xl text-xs font-semibold">
-        <button id="auth-toggle-signin" onclick="toggleAuthMode('signin')" class="flex-1 py-2 rounded-lg bg-emerald-500 text-black font-bold transition">
-          Sign In
-        </button>
-        <button id="auth-toggle-signup" onclick="toggleAuthMode('signup')" class="flex-1 py-2 rounded-lg text-gray-400 hover:text-white transition">
+        <button id="auth-toggle-signup" onclick="toggleAuthMode('signup')" class="flex-1 py-2 rounded-lg bg-emerald-500 text-black font-bold transition">
           Sign Up
+        </button>
+        <button id="auth-toggle-signin" onclick="toggleAuthMode('signin')" class="flex-1 py-2 rounded-lg text-gray-400 hover:text-white transition">
+          Sign In
         </button>
       </div>
 
       <!-- Auth Form -->
       <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="space-y-3.5">
-        <div id="auth-username-field" class="hidden">
-          <label class="block text-xs font-semibold text-gray-300 mb-1">Full Username:</label>
+        <div id="auth-username-field">
+          <label class="block text-xs font-semibold text-gray-300 mb-1">Your Full Name:</label>
           <input 
             id="auth-username-input" 
             type="text" 
-            placeholder="e.g. Alex Rivera"
+            required
+            placeholder="Enter your name"
             class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
           />
         </div>
@@ -635,7 +636,7 @@
           type="submit" 
           class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition shadow-lg shadow-emerald-500/20 mt-2"
         >
-          Sign In
+          Create Account
         </button>
       </form>
     </div>

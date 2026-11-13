@@ -5,11 +5,11 @@
 // Application State
 let state = {
   currentUser: null,
-  activeChatId: 'chat_1',
+  activeChatId: null,
   chatsList: [],
   searchQuery: '',
   supabaseClient: null,
-  authMode: 'signin',
+  authMode: 'signup',
   // Voice Call State
   voiceCallTimer: null,
   voiceCallSeconds: 0,
@@ -22,10 +22,10 @@ let state = {
   isVideoCamOff: false
 };
 
-// Storage Keys
-const DB_USERS_KEY = 'crochit_db_users_v2';
-const DB_SESSION_KEY = 'crochit_session_v2';
-const DB_CHATS_KEY = 'crochit_user_chats_v2';
+// Storage Keys (v3 for clean state with zero dummy chats)
+const DB_USERS_KEY = 'crochit_registered_users_v3';
+const DB_SESSION_KEY = 'crochit_permanent_session_v3';
+const DB_CHATS_KEY = 'crochit_user_chats_v3';
 
 // ==================== CROCHIT E2EE CRYPTOGRAPHY ENGINE ====================
 // 100% Free, Native Browser WebCrypto Subtle (AES-GCM-256)
@@ -173,9 +173,13 @@ function initCloudDatabase() {
 }
 
 function initAuthentication() {
-  // Check if session exists in localStorage
+  // Check if permanent session exists in localStorage
   let session = null;
   try {
+    // Clear any obsolete v2/legacy dummy sessions
+    localStorage.removeItem('crochit_session_v2');
+    localStorage.removeItem('crochit_session');
+
     const raw = localStorage.getItem(DB_SESSION_KEY);
     if (raw) session = JSON.parse(raw);
   } catch (e) {
@@ -184,14 +188,20 @@ function initAuthentication() {
 
   if (session && session.id) {
     state.currentUser = session;
+    closeAuthModal();
     loadUserConversations();
     renderAppUI();
   } else {
-    // If no active session, show default account or open sign in
-    state.currentUser = CROCHIT_DATABASE.defaultUser;
-    localStorage.setItem(DB_SESSION_KEY, JSON.stringify(state.currentUser));
-    loadUserConversations();
-    renderAppUI();
+    // Brand new visitor / logged out: Show Sign Up screen immediately!
+    // No dummy users, no pre-loaded fake chats
+    state.currentUser = null;
+    state.chatsList = [];
+    state.activeChatId = null;
+    renderProfileHeader();
+    renderConversationsList();
+    renderEmptyChatView();
+    toggleAuthMode('signup');
+    openAuthModal();
   }
 }
 
@@ -200,11 +210,59 @@ function renderAppUI() {
   renderConversationsList();
   if (state.chatsList.length > 0) {
     selectChat(state.activeChatId || state.chatsList[0].id);
+  } else {
+    state.activeChatId = null;
+    renderEmptyChatView();
+  }
+}
+
+// Clean Empty State when user has no active chat or no conversations yet
+function renderEmptyChatView() {
+  const name = document.getElementById('active-chat-name');
+  const status = document.getElementById('active-chat-status');
+  const avatar = document.getElementById('active-chat-avatar');
+  const onlineDot = document.getElementById('active-chat-online-dot');
+  const container = document.getElementById('chat-messages-container');
+
+  if (name) name.textContent = state.currentUser ? `Welcome, ${state.currentUser.username}!` : "Welcome to Crochit";
+  if (status) status.textContent = "100% Free End-to-End Encrypted";
+  if (avatar) avatar.src = "assets/logo.png";
+  if (onlineDot) onlineDot.classList.add('hidden');
+
+  if (container) {
+    container.innerHTML = `
+      <div class="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
+        <div class="w-16 h-16 rounded-3xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20 shadow-lg shadow-emerald-500/10">
+          <i data-lucide="shield-check" class="w-8 h-8"></i>
+        </div>
+        <div class="max-w-md space-y-1.5">
+          <h3 class="font-bold text-white text-base">End-to-End Encrypted Messenger</h3>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Your chats, voice calls, and video calls are 100% private. Neither Crochit nor anyone else can read your messages or listen to your calls.
+          </p>
+        </div>
+        <button 
+          onclick="openNewChatModal()" 
+          class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+        >
+          <i data-lucide="plus" class="w-4 h-4"></i>
+          <span>Start a New Conversation</span>
+        </button>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
   }
 }
 
 // Load Conversations for current user (Local storage + Cloud Supabase sync)
 async function loadUserConversations() {
+  if (!state.currentUser) {
+    state.chatsList = [];
+    renderConversationsList();
+    renderEmptyChatView();
+    return;
+  }
+
   const userChatKey = `${DB_CHATS_KEY}_${state.currentUser.id}`;
   let userChats = [];
 
@@ -227,7 +285,7 @@ async function loadUserConversations() {
         userChats = remoteChats.map(rc => ({
           id: rc.contact_id || rc.id,
           name: rc.contact_name,
-          avatar: rc.contact_avatar,
+          avatar: rc.contact_avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
           online: true,
           lastSeen: "Active now",
           isGroup: rc.is_group,
@@ -240,14 +298,20 @@ async function loadUserConversations() {
     }
   }
 
-  if (!userChats || userChats.length === 0) {
-    // Copy seed chats for this user
-    userChats = JSON.parse(JSON.stringify(CROCHIT_DATABASE.chats));
-    localStorage.setItem(userChatKey, JSON.stringify(userChats));
+  // Never load fake dummy chats - clean empty state for genuine user experience
+  if (!userChats) {
+    userChats = [];
   }
 
   state.chatsList = userChats;
   renderConversationsList();
+
+  if (state.chatsList.length > 0) {
+    selectChat(state.activeChatId || state.chatsList[0].id);
+  } else {
+    state.activeChatId = null;
+    renderEmptyChatView();
+  }
 }
 
 function saveUserConversations() {
@@ -282,8 +346,6 @@ function saveUserConversations() {
 
 // Render User Avatar and Username in Top Header & Profile
 function renderProfileHeader() {
-  if (!state.currentUser) return;
-
   const headerAvatar = document.getElementById('header-user-avatar');
   const headerUsername = document.getElementById('header-username-text');
   const bottomLabel = document.getElementById('bottom-user-label');
@@ -292,13 +354,23 @@ function renderProfileHeader() {
   const modalEmail = document.getElementById('modal-profile-email');
   const editUsernameInput = document.getElementById('edit-username-input');
 
-  if (headerAvatar) headerAvatar.src = state.currentUser.avatar;
-  if (headerUsername) headerUsername.textContent = state.currentUser.username;
-  if (bottomLabel) bottomLabel.textContent = `${state.currentUser.username} (${state.currentUser.email || 'Online'})`;
-  if (modalAvatar) modalAvatar.src = state.currentUser.avatar;
-  if (modalName) modalName.textContent = state.currentUser.username;
-  if (modalEmail) modalEmail.textContent = state.currentUser.email;
-  if (editUsernameInput) editUsernameInput.value = state.currentUser.username;
+  if (state.currentUser) {
+    const avatarUrl = state.currentUser.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80";
+    if (headerAvatar) headerAvatar.src = avatarUrl;
+    if (headerUsername) headerUsername.textContent = state.currentUser.username || 'User';
+    if (bottomLabel) bottomLabel.textContent = `${state.currentUser.username} (${state.currentUser.email || 'Online'})`;
+    if (modalAvatar) modalAvatar.src = avatarUrl;
+    if (modalName) modalName.textContent = state.currentUser.username || 'User';
+    if (modalEmail) modalEmail.textContent = state.currentUser.email || '';
+    if (editUsernameInput) editUsernameInput.value = state.currentUser.username || '';
+  } else {
+    if (headerAvatar) headerAvatar.src = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80";
+    if (headerUsername) headerUsername.textContent = "Sign Up / In";
+    if (bottomLabel) bottomLabel.textContent = "Not logged in";
+    if (modalName) modalName.textContent = "Guest";
+    if (modalEmail) modalEmail.textContent = "";
+    if (editUsernameInput) editUsernameInput.value = "";
+  }
 }
 
 // In-Place Update Profile (Username & Password)
@@ -388,14 +460,16 @@ function toggleAuthMode(mode) {
   const btnSignIn = document.getElementById('auth-toggle-signin');
   const btnSignUp = document.getElementById('auth-toggle-signup');
   const userField = document.getElementById('auth-username-field');
+  const userInput = document.getElementById('auth-username-input');
   const title = document.getElementById('auth-modal-title');
   const submitBtn = document.getElementById('auth-submit-btn');
 
   if (btnSignIn) btnSignIn.className = isSignIn ? "flex-1 py-2 rounded-lg bg-emerald-500 text-black font-bold transition" : "flex-1 py-2 rounded-lg text-gray-400 hover:text-white transition";
   if (btnSignUp) btnSignUp.className = !isSignIn ? "flex-1 py-2 rounded-lg bg-emerald-500 text-black font-bold transition" : "flex-1 py-2 rounded-lg text-gray-400 hover:text-white transition";
   if (userField) userField.classList.toggle('hidden', isSignIn);
-  if (title) title.textContent = isSignIn ? "Sign In to Crochit" : "Create Crochit Account";
-  if (submitBtn) submitBtn.textContent = isSignIn ? "Sign In" : "Sign Up";
+  if (userInput) userInput.required = !isSignIn;
+  if (title) title.textContent = isSignIn ? "Sign In to Crochit" : "Create Your Crochit Account";
+  if (submitBtn) submitBtn.textContent = isSignIn ? "Sign In" : "Create Account";
 }
 
 // Handle Sign In or Sign Up Form Submit
@@ -408,27 +482,57 @@ async function handleAuthSubmit(event) {
 
   const email = emailInput ? emailInput.value.trim() : '';
   const password = passwordInput ? passwordInput.value.trim() : '';
-  const username = usernameInput ? usernameInput.value.trim() : 'Crochit User';
+  const username = usernameInput ? usernameInput.value.trim() : '';
 
   if (!email || !password) {
-    alert("Please fill in email and password.");
+    alert("Please fill in both email and password.");
     return;
   }
 
-  let users = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [CROCHIT_DATABASE.defaultUser];
+  let users = [];
+  try {
+    users = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
+  } catch (e) {
+    users = [];
+  }
 
   if (state.authMode === 'signup') {
-    // 1. Sign Up
-    // Check if account already exists
+    // 1. Sign Up Mode
+    if (!username) {
+      alert("Please enter your name.");
+      return;
+    }
+
+    // Check if account already exists locally
     const existing = users.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (existing) {
       alert("An account with this email already exists. Please Sign In.");
+      toggleAuthMode('signin');
       return;
+    }
+
+    // Check cloud database if connected
+    if (state.supabaseClient) {
+      try {
+        const { data: existingCloud } = await state.supabaseClient
+          .from('crochit_users')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle();
+
+        if (existingCloud) {
+          alert("An account with this email already exists in the cloud database. Please Sign In.");
+          toggleAuthMode('signin');
+          return;
+        }
+      } catch (e) {
+        console.warn("Cloud lookup notice:", e);
+      }
     }
 
     const newUser = {
       id: 'usr_' + Date.now(),
-      username: username || 'Crochit Member',
+      username: username,
       email: email,
       password: password,
       avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
@@ -440,7 +544,7 @@ async function handleAuthSubmit(event) {
     users.push(newUser);
     localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
 
-    // If Supabase cloud database is configured, insert to cloud
+    // Save to Supabase Cloud DB
     if (state.supabaseClient) {
       try {
         await state.supabaseClient.from('crochit_users').insert([newUser]);
@@ -450,12 +554,13 @@ async function handleAuthSubmit(event) {
       }
     }
 
+    // Permanent session persistence (Never expires on browser close/reboot)
     state.currentUser = newUser;
     localStorage.setItem(DB_SESSION_KEY, JSON.stringify(newUser));
     alert(`Account created successfully! Welcome, ${newUser.username}`);
 
   } else {
-    // 2. Sign In
+    // 2. Sign In Mode
     let foundUser = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
 
     // If not in local storage and Supabase is configured, check cloud DB
@@ -466,7 +571,7 @@ async function handleAuthSubmit(event) {
           .select('*')
           .eq('email', email)
           .eq('password', password)
-          .single();
+          .maybeSingle();
 
         if (data) {
           foundUser = data;
@@ -483,19 +588,27 @@ async function handleAuthSubmit(event) {
       return;
     }
 
+    // Permanent session persistence (Never expires until user clicks Sign Out)
     state.currentUser = foundUser;
     localStorage.setItem(DB_SESSION_KEY, JSON.stringify(foundUser));
   }
 
-  loadUserConversations();
-  renderAppUI();
   closeAuthModal();
+  await loadUserConversations();
+  renderAppUI();
 }
 
 function handleLogout() {
   if (confirm("Are you sure you want to sign out of Crochit?")) {
     localStorage.removeItem(DB_SESSION_KEY);
     state.currentUser = null;
+    state.chatsList = [];
+    state.activeChatId = null;
+    closeProfileModal();
+    renderProfileHeader();
+    renderConversationsList();
+    renderEmptyChatView();
+    toggleAuthMode('signin');
     openAuthModal();
   }
 }
@@ -518,6 +631,8 @@ function openAuthModal() {
 }
 
 function closeAuthModal() {
+  // If not logged in, prevent bypassing auth modal!
+  if (!state.currentUser) return;
   const modal = document.getElementById('auth-modal');
   if (modal) modal.classList.add('hidden');
 }
@@ -807,7 +922,10 @@ async function sendCurrentMessage() {
 // ==================== END-TO-END ENCRYPTION VERIFICATION MODAL ====================
 function openSecurityVerifyModal() {
   const chat = state.chatsList.find(c => c.id === state.activeChatId);
-  if (!chat) return;
+  if (!chat) {
+    alert("Please select or start a conversation first to verify End-to-End Encryption safety numbers.");
+    return;
+  }
 
   const modal = document.getElementById('security-verify-modal');
   const avatar = document.getElementById('verify-contact-avatar');
@@ -1025,7 +1143,11 @@ function createNewConversation() {
 // ==================== 3. INTERACTIVE VOICE CALL ====================
 function startVoiceCall() {
   const chat = state.chatsList.find(c => c.id === state.activeChatId);
-  if (!chat) return;
+  if (!chat) {
+    alert("Please select or start a conversation first to make an encrypted voice call.");
+    openNewChatModal();
+    return;
+  }
 
   const modal = document.getElementById('voice-call-modal');
   const avatar = document.getElementById('voice-call-avatar');
@@ -1085,7 +1207,11 @@ function toggleSpeaker() {
 // ==================== 4. INTERACTIVE VIDEO CALL ====================
 async function startVideoCall() {
   const chat = state.chatsList.find(c => c.id === state.activeChatId);
-  if (!chat) return;
+  if (!chat) {
+    alert("Please select or start a conversation first to make an encrypted video call.");
+    openNewChatModal();
+    return;
+  }
 
   const modal = document.getElementById('video-call-modal');
   const headerAvatar = document.getElementById('video-call-header-avatar');
