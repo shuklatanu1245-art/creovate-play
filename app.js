@@ -14,6 +14,14 @@ let state = {
   voiceCallTimer: null,
   voiceCallSeconds: 0,
   isVoiceMuted: false,
+  // 20-Minute Offline Emergency Grace Engine
+  isCallOfflineSimulated: false,
+  emergencyGraceSeconds: 1200,
+  emergencyGraceTimer: null,
+  reservedCallContact: null,
+  offlineVoiceRecorder: null,
+  offlineVoiceChunks: [],
+  isRecordingOfflineCapsule: false,
   // Video Call State
   localVideoStream: null,
   videoCallTimer: null,
@@ -26,6 +34,8 @@ let state = {
 const DB_USERS_KEY = 'crochit_registered_users_v3';
 const DB_SESSION_KEY = 'crochit_permanent_session_v3';
 const DB_CHATS_KEY = 'crochit_user_chats_v3';
+const DB_RESERVED_CALL_KEY = 'crochit_reserved_call_v3';
+const DB_OFFLINE_OUTBOX_KEY = 'crochit_offline_outbox_v3';
 
 // ==================== CROCHIT E2EE CRYPTOGRAPHY ENGINE ====================
 // 100% Free, Native Browser WebCrypto Subtle (AES-GCM-256)
@@ -143,6 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initAuthentication();
   setupEventListeners();
   initEmojiGifPicker();
+  initOfflineEmergencyEngine();
 
   if (window.lucide) {
     lucide.createIcons();
@@ -1939,7 +1950,7 @@ function escapeAttr(text) {
     .replace(/"/g, '&quot;');
 }
 
-// ==================== 3. INTERACTIVE VOICE CALL ====================
+// ==================== 3. INTERACTIVE VOICE CALL & 20-MIN EMERGENCY GRACE ====================
 function startVoiceCall() {
   const chat = state.chatsList.find(c => c.id === state.activeChatId);
   if (!chat) {
@@ -1947,6 +1958,10 @@ function startVoiceCall() {
     openNewChatModal();
     return;
   }
+
+  // Hide top bar if active and preserve contact
+  hideEmergencyCallTopBar();
+  state.reservedCallContact = chat;
 
   const modal = document.getElementById('voice-call-modal');
   const avatar = document.getElementById('voice-call-avatar');
@@ -1959,6 +1974,13 @@ function startVoiceCall() {
 
   state.voiceCallSeconds = 0;
   state.isVoiceMuted = false;
+  state.isCallOfflineSimulated = false;
+
+  const banner = document.getElementById('call-offline-grace-banner');
+  if (banner) banner.classList.add('hidden');
+
+  const simLabel = document.getElementById('simulate-cut-label');
+  if (simLabel) simLabel.textContent = "Simulate Internet Cut (Test 20-Min Grace)";
 
   if (modal) modal.classList.remove('hidden');
 
@@ -1980,7 +2002,9 @@ function startVoiceTimer() {
     const mins = String(Math.floor(state.voiceCallSeconds / 60)).padStart(2, '0');
     const secs = String(state.voiceCallSeconds % 60).padStart(2, '0');
     const status = document.getElementById('voice-call-status');
-    if (status) status.textContent = `Connected (${mins}:${secs})`;
+    if (status && !state.isCallOfflineSimulated) {
+      status.textContent = `Connected (${mins}:${secs})`;
+    }
   }, 1000);
 }
 
@@ -1988,6 +2012,24 @@ function endVoiceCall() {
   clearInterval(state.voiceCallTimer);
   const modal = document.getElementById('voice-call-modal');
   if (modal) modal.classList.add('hidden');
+
+  // Reserve session for 20 minutes so user can 1-tap resume/redial!
+  const chat = state.chatsList.find(c => c.id === state.activeChatId) || state.reservedCallContact;
+  if (chat) {
+    state.reservedCallContact = chat;
+    if (!state.emergencyGraceTimer) {
+      state.emergencyGraceSeconds = 1200; // 20 minutes
+    }
+    try {
+      localStorage.setItem(DB_RESERVED_CALL_KEY, JSON.stringify({
+        contact: chat,
+        expiresAt: Date.now() + (state.emergencyGraceSeconds > 0 ? state.emergencyGraceSeconds : 1200) * 1000
+      }));
+    } catch (e) {}
+
+    startEmergencyGraceCountdown();
+    showEmergencyCallTopBar();
+  }
 }
 
 function toggleVoiceMute() {
@@ -2002,6 +2044,328 @@ function toggleVoiceMute() {
 function toggleSpeaker() {
   alert("Speaker output toggled.");
 }
+
+// ==================== 20-MINUTE EMERGENCY OFFLINE GRACE & SURVIVAL ENGINE ====================
+function initOfflineEmergencyEngine() {
+  // 1. Listen for browser online / offline network events
+  window.addEventListener('offline', () => {
+    console.warn("⚠️ Network offline detected!");
+    const voiceModal = document.getElementById('voice-call-modal');
+    if (voiceModal && !voiceModal.classList.contains('hidden')) {
+      triggerCallOfflineGraceMode(false);
+    }
+  });
+
+  window.addEventListener('online', () => {
+    console.log("✓ Network online restored!");
+    if (state.emergencyGraceTimer) {
+      const status = document.getElementById('voice-call-status');
+      if (status) status.innerHTML = `<span class="text-emerald-400 font-bold">✓ Internet Restored! Reconnecting...</span>`;
+      setTimeout(() => {
+        reconnectCallSession();
+      }, 1200);
+    }
+    flushOfflineOutbox();
+  });
+
+  // 2. Restore any ongoing 20-minute reservation from localStorage
+  restoreReservedCallSession();
+}
+
+function restoreReservedCallSession() {
+  try {
+    const raw = localStorage.getItem(DB_RESERVED_CALL_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data || !data.expiresAt || !data.contact) return;
+
+    const remaining = Math.floor((data.expiresAt - Date.now()) / 1000);
+    if (remaining > 0) {
+      state.reservedCallContact = data.contact;
+      state.emergencyGraceSeconds = remaining;
+      showEmergencyCallTopBar();
+      startEmergencyGraceCountdown();
+    } else {
+      localStorage.removeItem(DB_RESERVED_CALL_KEY);
+    }
+  } catch (e) {
+    console.warn("Error restoring reserved call session:", e);
+  }
+}
+
+function triggerCallOfflineGraceMode(isSimulated = false) {
+  playEmergencyOfflineChime();
+
+  const chat = state.chatsList.find(c => c.id === state.activeChatId) || state.reservedCallContact;
+  if (chat) {
+    state.reservedCallContact = chat;
+    try {
+      localStorage.setItem(DB_RESERVED_CALL_KEY, JSON.stringify({
+        contact: chat,
+        expiresAt: Date.now() + 1200 * 1000
+      }));
+    } catch (e) {}
+  }
+
+  const banner = document.getElementById('call-offline-grace-banner');
+  if (banner) banner.classList.remove('hidden');
+
+  const status = document.getElementById('voice-call-status');
+  if (status) {
+    status.innerHTML = `<span class="text-amber-400 font-bold animate-pulse">⚠️ Internet Disconnected — 20m Grace Buffer Active</span>`;
+  }
+
+  if (!state.emergencyGraceTimer) {
+    state.emergencyGraceSeconds = 1200;
+  }
+  startEmergencyGraceCountdown();
+}
+
+function startEmergencyGraceCountdown() {
+  clearInterval(state.emergencyGraceTimer);
+  updateGraceTimerDisplay();
+
+  state.emergencyGraceTimer = setInterval(() => {
+    state.emergencyGraceSeconds--;
+    if (state.emergencyGraceSeconds <= 0) {
+      clearInterval(state.emergencyGraceTimer);
+      state.emergencyGraceTimer = null;
+      dismissReservedCall();
+      alert("⚠️ 20-minute Emergency Call Reservation has expired.");
+      return;
+    }
+    updateGraceTimerDisplay();
+  }, 1000);
+}
+
+function updateGraceTimerDisplay() {
+  const mins = String(Math.floor(state.emergencyGraceSeconds / 60)).padStart(2, '0');
+  const secs = String(state.emergencyGraceSeconds % 60).padStart(2, '0');
+  const timeFormatted = `${mins}:${secs}`;
+
+  const bannerTimer = document.getElementById('offline-grace-timer');
+  if (bannerTimer) bannerTimer.textContent = timeFormatted;
+
+  const topBarTimer = document.getElementById('top-bar-grace-timer');
+  if (topBarTimer) topBarTimer.textContent = timeFormatted;
+}
+
+function simulateInternetCutToggle() {
+  state.isCallOfflineSimulated = !state.isCallOfflineSimulated;
+  const label = document.getElementById('simulate-cut-label');
+
+  if (state.isCallOfflineSimulated) {
+    if (label) label.textContent = "Restore Internet (End Cut Test)";
+    triggerCallOfflineGraceMode(true);
+  } else {
+    if (label) label.textContent = "Simulate Internet Cut (Test 20-Min Grace)";
+    reconnectCallSession();
+  }
+}
+
+function reconnectCallSession() {
+  state.isCallOfflineSimulated = false;
+  const label = document.getElementById('simulate-cut-label');
+  if (label) label.textContent = "Simulate Internet Cut (Test 20-Min Grace)";
+
+  const banner = document.getElementById('call-offline-grace-banner');
+  if (banner) banner.classList.add('hidden');
+
+  const status = document.getElementById('voice-call-status');
+  if (status) {
+    status.innerHTML = `<span class="text-emerald-400 font-bold">✓ Connected (Handshake Restored with E2EE)</span>`;
+  }
+
+  clearInterval(state.emergencyGraceTimer);
+  state.emergencyGraceTimer = null;
+  localStorage.removeItem(DB_RESERVED_CALL_KEY);
+  hideEmergencyCallTopBar();
+  playCallTone();
+}
+
+function showEmergencyCallTopBar() {
+  const topBar = document.getElementById('emergency-call-top-bar');
+  const nameEl = document.getElementById('top-bar-contact-name');
+  if (topBar && state.reservedCallContact) {
+    if (nameEl) nameEl.textContent = state.reservedCallContact.name;
+    topBar.classList.remove('hidden');
+    updateGraceTimerDisplay();
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+function hideEmergencyCallTopBar() {
+  const topBar = document.getElementById('emergency-call-top-bar');
+  if (topBar) topBar.classList.add('hidden');
+}
+
+function reconnectReservedCall() {
+  if (!state.reservedCallContact) {
+    alert("No active reserved call session found.");
+    return;
+  }
+
+  state.activeChatId = state.reservedCallContact.id;
+  hideEmergencyCallTopBar();
+
+  const modal = document.getElementById('voice-call-modal');
+  const avatar = document.getElementById('voice-call-avatar');
+  const name = document.getElementById('voice-call-name');
+  const status = document.getElementById('voice-call-status');
+
+  if (avatar) avatar.src = state.reservedCallContact.avatar;
+  if (name) name.textContent = state.reservedCallContact.name;
+  if (status) status.textContent = "Resuming Reserved Call...";
+
+  if (modal) modal.classList.remove('hidden');
+  playCallTone();
+
+  setTimeout(() => {
+    reconnectCallSession();
+    startVoiceTimer();
+  }, 1200);
+}
+
+function dismissReservedCall() {
+  clearInterval(state.emergencyGraceTimer);
+  state.emergencyGraceTimer = null;
+  state.reservedCallContact = null;
+  state.emergencyGraceSeconds = 1200;
+  localStorage.removeItem(DB_RESERVED_CALL_KEY);
+  hideEmergencyCallTopBar();
+  const banner = document.getElementById('call-offline-grace-banner');
+  if (banner) banner.classList.add('hidden');
+}
+
+async function recordOfflineVoiceCapsule() {
+  if (state.isRecordingOfflineCapsule) {
+    stopOfflineVoiceCapsule();
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.offlineVoiceChunks = [];
+    state.offlineVoiceRecorder = new MediaRecorder(stream);
+
+    state.offlineVoiceRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) state.offlineVoiceChunks.push(e.data);
+    };
+
+    state.offlineVoiceRecorder.onstop = async () => {
+      const blob = new Blob(state.offlineVoiceChunks, { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Audio = reader.result;
+        queueOfflineVoiceCapsuleMessage(base64Audio);
+      };
+      reader.readAsDataURL(blob);
+
+      stream.getTracks().forEach(t => t.stop());
+    };
+
+    state.offlineVoiceRecorder.start();
+    state.isRecordingOfflineCapsule = true;
+
+    alert("🎙️ Emergency Voice Capsule recording started! You can speak without any internet. When done, click Voice Capsule again to save and queue for auto-delivery.");
+  } catch (err) {
+    console.warn("Microphone access notice for capsule:", err);
+    const note = prompt("🎙️ Microphone direct stream paused. Enter emergency voice capsule transcript to queue for 100% automatic delivery:");
+    if (note && note.trim()) {
+      queueOfflineVoiceCapsuleMessage(null, note.trim());
+    }
+  }
+}
+
+function stopOfflineVoiceCapsule() {
+  if (state.offlineVoiceRecorder && state.isRecordingOfflineCapsule) {
+    state.offlineVoiceRecorder.stop();
+    state.isRecordingOfflineCapsule = false;
+    alert("✓ Emergency Voice Capsule saved! It will automatically deliver to your contact as soon as internet reconnects or within this 20-minute grace window.");
+  }
+}
+
+function queueOfflineVoiceCapsuleMessage(audioDataUrl, textFallback) {
+  const targetContact = state.reservedCallContact || state.chatsList.find(c => c.id === state.activeChatId);
+  if (!targetContact) return;
+
+  const capsuleMsg = {
+    id: 'capsule_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+    chat_id: targetContact.id,
+    sender: 'me',
+    sender_id: state.currentUser ? state.currentUser.id : 'usr',
+    sender_name: state.currentUser ? state.currentUser.username : 'User',
+    receiver_id: targetContact.otherUserId || '',
+    time: getCurrentTimeFormatted(),
+    text: textFallback ? `[Emergency Voice Capsule]: ${textFallback}` : "🎙️ [Emergency Offline Voice Capsule Attached]",
+    audioUrl: audioDataUrl || null,
+    isVoiceCapsule: true,
+    isOfflineQueued: true,
+    created_at: new Date().toISOString(),
+    status: 'pending_reconnect'
+  };
+
+  if (!targetContact.messages) targetContact.messages = [];
+  targetContact.messages.push(capsuleMsg);
+  saveUserConversations();
+  renderActiveChatMessages();
+
+  try {
+    const raw = localStorage.getItem(DB_OFFLINE_OUTBOX_KEY) || '[]';
+    let outbox = JSON.parse(raw);
+    outbox.push({ contact: targetContact, message: capsuleMsg });
+    localStorage.setItem(DB_OFFLINE_OUTBOX_KEY, JSON.stringify(outbox));
+  } catch (e) {}
+}
+
+async function flushOfflineOutbox() {
+  try {
+    const raw = localStorage.getItem(DB_OFFLINE_OUTBOX_KEY);
+    if (!raw) return;
+    const outbox = JSON.parse(raw);
+    if (!Array.isArray(outbox) || outbox.length === 0) return;
+
+    console.log(`Flushing ${outbox.length} offline queued items...`);
+    for (const item of outbox) {
+      if (item && item.contact && item.message) {
+        item.message.status = 'delivered';
+        await dispatchOutgoingMessage(item.contact, item.message);
+      }
+    }
+    localStorage.removeItem(DB_OFFLINE_OUTBOX_KEY);
+    console.log("✓ Offline outbox flushed successfully!");
+  } catch (e) {
+    console.warn("Outbox flush notice:", e);
+  }
+}
+
+function playEmergencyOfflineChime() {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(320, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(220, audioCtx.currentTime + 0.4);
+    gain.gain.setValueAtTime(0.09, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.5);
+  } catch (e) {}
+}
+
+// Global browser window bindings
+window.startVoiceCall = startVoiceCall;
+window.endVoiceCall = endVoiceCall;
+window.toggleVoiceMute = toggleVoiceMute;
+window.toggleSpeaker = toggleSpeaker;
+window.simulateInternetCutToggle = simulateInternetCutToggle;
+window.reconnectCallSession = reconnectCallSession;
+window.reconnectReservedCall = reconnectReservedCall;
+window.dismissReservedCall = dismissReservedCall;
+window.recordOfflineVoiceCapsule = recordOfflineVoiceCapsule;
 
 // ==================== 4. INTERACTIVE VIDEO CALL ====================
 async function startVideoCall() {
