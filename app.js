@@ -40,15 +40,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ==================== 1. CLOUD DATABASE & AUTH ====================
 function initCloudDatabase() {
-  if (CROCHIT_CONFIG.supabaseUrl && CROCHIT_CONFIG.supabaseAnonKey && window.supabase) {
+  const activeKey = CROCHIT_CONFIG.supabaseAnonKey;
+  if (CROCHIT_CONFIG.supabaseUrl && activeKey && window.supabase) {
     try {
       state.supabaseClient = window.supabase.createClient(
         CROCHIT_CONFIG.supabaseUrl,
-        CROCHIT_CONFIG.supabaseAnonKey
+        activeKey,
+        {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true
+          }
+        }
       );
-      console.log("✓ Crochit Supabase Cloud Database Connected!");
+      console.log("✓ Crochit Supabase Cloud Database Connected:", CROCHIT_CONFIG.supabaseUrl);
       const statusEl = document.getElementById('app-conn-status');
-      if (statusEl) statusEl.textContent = "Cloud DB Connected";
+      if (statusEl) statusEl.textContent = "Cloud DB Active";
     } catch (e) {
       console.warn("Supabase initialization error:", e);
     }
@@ -86,8 +93,8 @@ function renderAppUI() {
   }
 }
 
-// Load Conversations for current user
-function loadUserConversations() {
+// Load Conversations for current user (Local storage + Cloud Supabase sync)
+async function loadUserConversations() {
   const userChatKey = `${DB_CHATS_KEY}_${state.currentUser.id}`;
   let userChats = [];
 
@@ -98,6 +105,31 @@ function loadUserConversations() {
     userChats = [];
   }
 
+  // If cloud DB is available and local list is empty, fetch saved contacts from cloud
+  if ((!userChats || userChats.length === 0) && state.supabaseClient) {
+    try {
+      const { data: remoteChats, error } = await state.supabaseClient
+        .from('crochit_user_chats')
+        .select('*')
+        .eq('user_id', state.currentUser.id);
+
+      if (remoteChats && remoteChats.length > 0) {
+        userChats = remoteChats.map(rc => ({
+          id: rc.contact_id || rc.id,
+          name: rc.contact_name,
+          avatar: rc.contact_avatar,
+          online: true,
+          lastSeen: "Active now",
+          isGroup: rc.is_group,
+          messages: []
+        }));
+        localStorage.setItem(userChatKey, JSON.stringify(userChats));
+      }
+    } catch (e) {
+      console.warn("Could not fetch remote chats:", e);
+    }
+  }
+
   if (!userChats || userChats.length === 0) {
     // Copy seed chats for this user
     userChats = JSON.parse(JSON.stringify(CROCHIT_DATABASE.chats));
@@ -105,6 +137,7 @@ function loadUserConversations() {
   }
 
   state.chatsList = userChats;
+  renderConversationsList();
 }
 
 function saveUserConversations() {

@@ -3,9 +3,8 @@
 
 const CROCHIT_CONFIG = {
   // Cloud Database Setup (Supabase)
-  // Jab aap key doge, yahan direct configure ho jayegi:
-  supabaseUrl: "", 
-  supabaseAnonKey: ""
+  supabaseUrl: "https://bmiabyytkxutomjtejot.supabase.co", 
+  supabaseAnonKey: "sb_publishable_ZzrCWGCmyq8KR_1ExkzMug_AOqYueyY"
 };
 
 const CROCHIT_DATABASE = {
