@@ -439,6 +439,33 @@
         </div>
       </div>
 
+      <!-- Live Encryption Audit & Interception Test -->
+      <div class="p-3.5 rounded-2xl bg-black/50 border border-emerald-500/20 space-y-2.5 text-left">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-white flex items-center gap-1.5">
+            <i data-lucide="terminal" class="w-3.5 h-3.5 text-emerald-400"></i>
+            Live Ciphertext Audit
+          </span>
+          <span class="text-[10px] text-emerald-400 font-mono">Active Cipher</span>
+        </div>
+        <div class="space-y-1">
+          <span class="text-[10px] text-gray-400">Raw Ciphertext in Database / Network:</span>
+          <div id="audit-raw-ciphertext" class="p-2 rounded-lg bg-[#0b141a] border border-white/5 font-mono text-[10px] text-gray-300 break-all select-all max-h-16 overflow-y-auto">
+            🔒e2ee:IV:Ciphertext
+          </div>
+        </div>
+        <button 
+          onclick="simulateInterceptionTest()" 
+          class="w-full py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+        >
+          <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i>
+          <span>Test Unauthorized Interception (Hacker Simulation)</span>
+        </button>
+        <div id="interception-test-result" class="text-[10px] font-mono hidden p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
       <button onclick="closeSecurityVerifyModal()" class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition shadow">
         ✓ Confirmed Secure
       </button>
