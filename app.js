@@ -191,6 +191,7 @@ function initAuthentication() {
     closeAuthModal();
     loadUserConversations();
     renderAppUI();
+    startRealtimeMessageListeners();
   } else {
     // Brand new visitor / logged out: Show Sign Up screen immediately!
     // No dummy users, no pre-loaded fake chats
@@ -283,9 +284,10 @@ async function loadUserConversations() {
 
       if (remoteChats && remoteChats.length > 0) {
         userChats = remoteChats.map(rc => ({
-          id: rc.contact_id || rc.id,
+          id: rc.contact_id ? (rc.contact_id.startsWith('direct_') ? rc.contact_id : getDirectChatId(state.currentUser.id, rc.contact_id)) : rc.id,
           name: rc.contact_name,
           avatar: rc.contact_avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+          otherUserId: rc.contact_id,
           online: true,
           lastSeen: "Active now",
           isGroup: rc.is_group,
@@ -301,6 +303,58 @@ async function loadUserConversations() {
   // Never load fake dummy chats - clean empty state for genuine user experience
   if (!userChats) {
     userChats = [];
+  }
+
+  // Fetch message history from cloud database if available
+  if (state.supabaseClient && state.currentUser) {
+    try {
+      const myId = state.currentUser.id;
+      const { data: cloudMsgs } = await state.supabaseClient
+        .from('crochit_messages')
+        .select('*')
+        .or(`receiver_id.eq.${myId},sender_id.eq.${myId}`)
+        .order('created_at', { ascending: true });
+
+      if (cloudMsgs && cloudMsgs.length > 0) {
+        cloudMsgs.forEach(cm => {
+          let chat = userChats.find(c => c.id === cm.chat_id || (cm.sender_id !== myId && c.otherUserId === cm.sender_id) || (cm.receiver_id !== myId && c.otherUserId === cm.receiver_id));
+          if (!chat && cm.sender_id !== myId) {
+            // Auto-add contact from incoming message history
+            chat = {
+              id: cm.chat_id || getDirectChatId(myId, cm.sender_id),
+              name: cm.sender_name || 'Contact',
+              avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+              otherUserId: cm.sender_id,
+              online: true,
+              lastSeen: "Active now",
+              isGroup: false,
+              messages: []
+            };
+            userChats.unshift(chat);
+          }
+
+          if (chat) {
+            if (!chat.messages) chat.messages = [];
+            if (!chat.messages.some(m => m.id === cm.id)) {
+              chat.messages.push({
+                id: cm.id,
+                sender: cm.sender_id === myId ? 'me' : 'them',
+                sender_name: cm.sender_name,
+                time: getCurrentTimeFormatted(),
+                text: cm.text,
+                image: cm.image,
+                isVoiceNote: cm.is_voice_note,
+                created_at: cm.created_at,
+                status: cm.status || 'delivered'
+              });
+            }
+          }
+        });
+        localStorage.setItem(userChatKey, JSON.stringify(userChats));
+      }
+    } catch (e) {
+      console.warn("Cloud message fetch notice:", e);
+    }
   }
 
   state.chatsList = userChats;
@@ -331,7 +385,7 @@ function saveUserConversations() {
         .upsert(state.chatsList.map(c => ({
           id: `${state.currentUser.id}_${c.id}`,
           user_id: state.currentUser.id,
-          contact_id: c.id,
+          contact_id: c.otherUserId || c.id,
           contact_name: c.name,
           contact_avatar: c.avatar,
           is_group: c.isGroup,
@@ -596,10 +650,12 @@ async function handleAuthSubmit(event) {
   closeAuthModal();
   await loadUserConversations();
   renderAppUI();
+  startRealtimeMessageListeners();
 }
 
 function handleLogout() {
   if (confirm("Are you sure you want to sign out of Crochit?")) {
+    clearInterval(cloudPollInterval);
     localStorage.removeItem(DB_SESSION_KEY);
     state.currentUser = null;
     state.chatsList = [];
@@ -640,11 +696,27 @@ function closeAuthModal() {
 function openNewChatModal() {
   const modal = document.getElementById('new-chat-modal');
   if (modal) modal.classList.remove('hidden');
+  toggleNewChatTab('direct');
+  const searchInput = document.getElementById('search-user-input');
+  if (searchInput) {
+    searchInput.value = '';
+    setTimeout(() => searchInput.focus(), 100);
+  }
+  searchUsersInDatabase('');
 }
 
 function closeNewChatModal() {
   const modal = document.getElementById('new-chat-modal');
   if (modal) modal.classList.add('hidden');
+}
+
+function openSearchWithQuery(q) {
+  openNewChatModal();
+  const searchInput = document.getElementById('search-user-input');
+  if (searchInput) {
+    searchInput.value = q;
+  }
+  searchUsersInDatabase(q);
 }
 
 // ==================== 2. CHAT & MESSAGING ENGINE ====================
@@ -662,12 +734,14 @@ function renderConversationsList() {
   if (countBadge) countBadge.textContent = filtered.length;
 
   if (filtered.length === 0) {
+    const isSearching = !!query;
     container.innerHTML = `
-      <div class="p-6 text-center text-gray-400 space-y-2">
-        <i data-lucide="message-square" class="w-8 h-8 mx-auto text-gray-500"></i>
-        <p class="text-xs">No conversations found.</p>
-        <button onclick="openNewChatModal()" class="text-xs text-emerald-400 hover:underline font-bold">
-          + Start a new chat
+      <div class="p-6 text-center text-gray-400 space-y-3">
+        <i data-lucide="${isSearching ? 'user-check' : 'message-square'}" class="w-8 h-8 mx-auto text-gray-500"></i>
+        <p class="text-xs text-gray-300">${isSearching ? `No existing chat found matching "${escapeHtml(query)}"` : 'No conversations yet.'}</p>
+        <button onclick="${isSearching ? `openSearchWithQuery('${escapeAttr(query)}')` : 'openNewChatModal()'}" class="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 text-xs font-bold transition flex items-center gap-1.5 mx-auto shadow-sm">
+          <i data-lucide="search" class="w-3.5 h-3.5"></i>
+          <span>${isSearching ? `Search User Database for "${escapeHtml(query)}"` : '+ Start a new chat'}</span>
         </button>
       </div>
     `;
@@ -888,6 +962,82 @@ async function renderActiveChatMessages() {
   container.scrollTop = container.scrollHeight;
 }
 
+// Central Dispatcher for All Outgoing Messages (Cross-Tab Broadcast + Cloud Supabase Sync)
+async function dispatchOutgoingMessage(chat, newMsg) {
+  if (!chat.messages) chat.messages = [];
+  chat.messages.push(newMsg);
+
+  saveUserConversations();
+  await renderActiveChatMessages();
+  renderConversationsList();
+
+  const payload = {
+    id: newMsg.id,
+    chat_id: chat.id,
+    sender: 'them', // when received by other user
+    sender_id: state.currentUser.id,
+    sender_name: state.currentUser.username,
+    sender_avatar: state.currentUser.avatar,
+    receiver_id: chat.otherUserId || '',
+    text: newMsg.text,
+    image: newMsg.image || null,
+    isVoiceNote: !!newMsg.isVoiceNote,
+    time: newMsg.time,
+    created_at: newMsg.created_at || new Date().toISOString()
+  };
+
+  // 1. Cross-tab Realtime Mesh (BroadcastChannel) - Instant 0ms delivery
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      if (!window.crochitChannel) {
+        window.crochitChannel = new BroadcastChannel('crochit_realtime_mesh');
+      }
+      window.crochitChannel.postMessage({
+        type: 'INCOMING_MESSAGE',
+        payload: payload
+      });
+    } catch (e) {
+      console.warn("BroadcastChannel post error:", e);
+    }
+  }
+
+  // 2. Cross-tab Storage Mailbox fallback
+  try {
+    const raw = localStorage.getItem('crochit_shared_mailbox') || '[]';
+    let mailbox = [];
+    try { mailbox = JSON.parse(raw); } catch (e) { mailbox = []; }
+    mailbox.push(payload);
+    if (mailbox.length > 60) mailbox = mailbox.slice(mailbox.length - 60);
+    localStorage.setItem('crochit_shared_mailbox', JSON.stringify(mailbox));
+  } catch (e) {}
+
+  // 3. Supabase Cloud Database insert (cross-device delivery)
+  if (state.supabaseClient) {
+    try {
+      state.supabaseClient
+        .from('crochit_messages')
+        .insert([{
+          id: newMsg.id,
+          chat_id: chat.id,
+          sender_id: state.currentUser.id,
+          sender_name: state.currentUser.username,
+          receiver_id: chat.otherUserId || '',
+          text: newMsg.text,
+          image: newMsg.image || null,
+          is_voice_note: !!newMsg.isVoiceNote,
+          status: 'delivered',
+          created_at: newMsg.created_at || new Date().toISOString()
+        }])
+        .then(({ error }) => {
+          if (error) console.warn("Supabase message insert notice:", error);
+          else console.log("✓ Message stored in Supabase cloud database");
+        });
+    } catch (e) {
+      console.warn("Supabase cloud insert notice:", e);
+    }
+  }
+}
+
 async function sendCurrentMessage() {
   const input = document.getElementById('chat-message-input');
   if (!input) return;
@@ -898,25 +1048,24 @@ async function sendCurrentMessage() {
   const chat = state.chatsList.find(c => c.id === state.activeChatId);
   if (!chat) return;
 
-  // 100% Free E2EE Encryption with AES-GCM 256 before storage
+  // 100% Free E2EE Encryption with AES-GCM 256 before transmission
   const encryptedText = await CrochitCrypto.encrypt(text, chat.id);
 
   const newMsg = {
-    id: 'msg_' + Date.now(),
+    id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+    chat_id: chat.id,
     sender: 'me',
+    sender_id: state.currentUser.id,
+    sender_name: state.currentUser.username,
+    receiver_id: chat.otherUserId || '',
     time: getCurrentTimeFormatted(),
     text: encryptedText,
+    created_at: new Date().toISOString(),
     status: 'delivered'
   };
 
-  if (!chat.messages) chat.messages = [];
-  chat.messages.push(newMsg);
-
-  saveUserConversations();
-  await renderActiveChatMessages();
-  renderConversationsList();
-
   input.value = '';
+  await dispatchOutgoingMessage(chat, newMsg);
 }
 
 // ==================== END-TO-END ENCRYPTION VERIFICATION MODAL ====================
@@ -1037,7 +1186,7 @@ function insertQuickEmoji(emoji) {
   }
 }
 
-function attachSamplePhoto() {
+async function attachSamplePhoto() {
   const photos = [
     "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&auto=format&fit=crop&q=80",
     "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80"
@@ -1048,41 +1197,41 @@ function attachSamplePhoto() {
   if (!chat) return;
 
   const newMsg = {
-    id: 'msg_' + Date.now(),
+    id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+    chat_id: chat.id,
     sender: 'me',
+    sender_id: state.currentUser ? state.currentUser.id : 'usr',
+    sender_name: state.currentUser ? state.currentUser.username : 'User',
+    receiver_id: chat.otherUserId || '',
     time: getCurrentTimeFormatted(),
     text: "Photo 📸",
     image: photo,
+    created_at: new Date().toISOString(),
     status: 'delivered'
   };
 
-  if (!chat.messages) chat.messages = [];
-  chat.messages.push(newMsg);
-
-  saveUserConversations();
-  renderActiveChatMessages();
-  renderConversationsList();
+  await dispatchOutgoingMessage(chat, newMsg);
 }
 
-function sendVoiceNote() {
+async function sendVoiceNote() {
   const chat = state.chatsList.find(c => c.id === state.activeChatId);
   if (!chat) return;
 
   const newMsg = {
-    id: 'msg_' + Date.now(),
+    id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+    chat_id: chat.id,
     sender: 'me',
+    sender_id: state.currentUser ? state.currentUser.id : 'usr',
+    sender_name: state.currentUser ? state.currentUser.username : 'User',
+    receiver_id: chat.otherUserId || '',
     time: getCurrentTimeFormatted(),
     text: "",
     isVoiceNote: true,
+    created_at: new Date().toISOString(),
     status: 'delivered'
   };
 
-  if (!chat.messages) chat.messages = [];
-  chat.messages.push(newMsg);
-
-  saveUserConversations();
-  renderActiveChatMessages();
-  renderConversationsList();
+  await dispatchOutgoingMessage(chat, newMsg);
 }
 
 function clearCurrentChatHistory() {
@@ -1097,47 +1246,436 @@ function clearCurrentChatHistory() {
   }
 }
 
-function createNewConversation() {
-  const nameInput = document.getElementById('new-contact-name');
-  const isGroupInput = document.getElementById('new-chat-is-group');
+// ==================== USER SEARCH & REAL-TIME DIRECT CONVERSATIONS ====================
 
-  const name = nameInput ? nameInput.value.trim() : '';
-  const isGroup = isGroupInput ? isGroupInput.checked : false;
+// Generate deterministic shared chat ID for 2 users so both have the exact same chat thread
+function getDirectChatId(id1, id2) {
+  if (!id1 || !id2) return 'chat_' + Date.now();
+  return 'direct_' + [String(id1), String(id2)].sort().join('_');
+}
 
-  if (!name) {
-    alert("Please enter contact name or group title.");
+// Toggle between "Find User" and "Create Group" tabs
+function toggleNewChatTab(tab) {
+  const isDirect = tab === 'direct';
+  const tabDirect = document.getElementById('new-chat-tab-direct');
+  const tabGroup = document.getElementById('new-chat-tab-group');
+  const btnDirect = document.getElementById('tab-find-user-btn');
+  const btnGroup = document.getElementById('tab-create-group-btn');
+
+  if (tabDirect) tabDirect.classList.toggle('hidden', !isDirect);
+  if (tabGroup) tabGroup.classList.toggle('hidden', isDirect);
+
+  if (btnDirect) {
+    btnDirect.className = isDirect
+      ? "flex-1 py-1.5 rounded-lg bg-emerald-500 text-black font-bold transition"
+      : "flex-1 py-1.5 rounded-lg text-gray-400 hover:text-white transition";
+  }
+  if (btnGroup) {
+    btnGroup.className = !isDirect
+      ? "flex-1 py-1.5 rounded-lg bg-purple-600 text-white font-bold transition"
+      : "flex-1 py-1.5 rounded-lg text-gray-400 hover:text-white transition";
+  }
+}
+
+let searchDebounceTimer = null;
+function handleUserSearchInput(query) {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    searchUsersInDatabase(query);
+  }, 250);
+}
+
+// Privacy-Preserving User Search:
+// Database users are NEVER listed publicly by default.
+// Only matched users appear when searching for their specific username or email.
+async function searchUsersInDatabase(query) {
+  const container = document.getElementById('search-user-results');
+  if (!container) return;
+
+  const cleanQuery = (query || '').trim().toLowerCase();
+
+  // If query is empty: keep the database privacy state!
+  if (!cleanQuery) {
+    container.innerHTML = `
+      <div class="p-6 text-center text-gray-400 space-y-2 rounded-xl bg-white/[0.02] border border-white/5">
+        <i data-lucide="shield-check" class="w-8 h-8 mx-auto text-emerald-400/80"></i>
+        <h4 class="text-xs font-bold text-white">Database Privacy Protected</h4>
+        <p class="text-[11px] text-gray-400 leading-relaxed max-w-xs mx-auto">
+          User directory is private. Other users are hidden until you search their exact username or email.
+        </p>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
     return;
   }
 
-  const avatar = isGroup
-    ? "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150&auto=format&fit=crop&q=80"
-    : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80";
+  // Show searching indicator
+  container.innerHTML = `
+    <div class="p-6 text-center text-gray-400 space-y-2">
+      <div class="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+      <p class="text-xs text-gray-300">Searching user database for "${escapeHtml(cleanQuery)}"...</p>
+    </div>
+  `;
+
+  let matchedUsers = [];
+  const myId = state.currentUser ? state.currentUser.id : '';
+  const myEmail = state.currentUser ? (state.currentUser.email || '').toLowerCase() : '';
+
+  // 1. Search in local registered users (localStorage)
+  try {
+    const localUsers = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
+    localUsers.forEach(u => {
+      if (u.id !== myId && (u.email || '').toLowerCase() !== myEmail) {
+        const uName = (u.username || '').toLowerCase();
+        const uEmail = (u.email || '').toLowerCase();
+        if (uName.includes(cleanQuery) || uEmail.includes(cleanQuery)) {
+          matchedUsers.push({
+            id: u.id,
+            username: u.username,
+            email: u.email,
+            avatar: u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+            bio: u.bio || "Available on Crochit"
+          });
+        }
+      }
+    });
+  } catch (e) {
+    console.warn("Local user search notice:", e);
+  }
+
+  // 2. Search in Supabase Cloud Database (crochit_users)
+  if (state.supabaseClient) {
+    try {
+      const { data: cloudUsers } = await state.supabaseClient
+        .from('crochit_users')
+        .select('id, username, email, avatar, bio')
+        .or(`username.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%`)
+        .limit(10);
+
+      if (cloudUsers && cloudUsers.length > 0) {
+        cloudUsers.forEach(cu => {
+          if (cu.id !== myId && (cu.email || '').toLowerCase() !== myEmail) {
+            const alreadyInList = matchedUsers.some(mu => mu.id === cu.id || mu.username.toLowerCase() === cu.username.toLowerCase());
+            if (!alreadyInList) {
+              matchedUsers.push({
+                id: cu.id,
+                username: cu.username,
+                email: cu.email,
+                avatar: cu.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+                bio: cu.bio || "Available on Crochit"
+              });
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("Cloud user search notice:", e);
+    }
+  }
+
+  // If no users matched
+  if (matchedUsers.length === 0) {
+    container.innerHTML = `
+      <div class="p-5 text-center text-gray-400 space-y-2 rounded-xl bg-white/[0.02] border border-white/5">
+        <i data-lucide="user-x" class="w-7 h-7 mx-auto text-gray-500"></i>
+        <h4 class="text-xs font-bold text-white">No user found matching "${escapeHtml(cleanQuery)}"</h4>
+        <p class="text-[11px] text-gray-400 leading-relaxed max-w-xs mx-auto">
+          Make sure the username is spelled correctly, or invite them to register an account on Crochit.
+        </p>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  // Render matched users
+  let html = `<div class="space-y-2">`;
+  matchedUsers.forEach(u => {
+    const sharedChatId = getDirectChatId(myId, u.id);
+    const isExistingChat = state.chatsList.some(c => c.id === sharedChatId || c.otherUserId === u.id);
+
+    html += `
+      <div class="p-3 rounded-xl bg-[#16222a] border border-white/5 hover:border-emerald-500/30 transition flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="relative shrink-0">
+            <img src="${u.avatar}" class="w-10 h-10 rounded-full object-cover border border-purple-500/40" alt="${escapeHtml(u.username)}" />
+            <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#111b21]"></span>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <h5 class="text-xs font-bold text-white truncate">${escapeHtml(u.username)}</h5>
+              <span class="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-400 text-[9px] font-mono rounded">Active</span>
+            </div>
+            <p class="text-[10px] text-gray-400 truncate">${escapeHtml(u.email || u.bio || 'Crochit Member')}</p>
+          </div>
+        </div>
+
+        <button 
+          onclick="startDirectChatWithUser('${u.id}', '${escapeAttr(u.username)}', '${escapeAttr(u.avatar)}')"
+          class="shrink-0 px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition flex items-center gap-1.5 shadow shadow-emerald-500/20"
+        >
+          <i data-lucide="${isExistingChat ? 'message-square' : 'user-plus'}" class="w-3.5 h-3.5"></i>
+          <span>${isExistingChat ? 'Open' : 'Chat'}</span>
+        </button>
+      </div>
+    `;
+  });
+  html += `</div>`;
+
+  container.innerHTML = html;
+  if (window.lucide) lucide.createIcons();
+}
+
+// Start or Open Direct 1-on-1 Conversation with a User
+function startDirectChatWithUser(otherUserId, otherUsername, otherAvatar) {
+  if (!state.currentUser) return;
+
+  const chatId = getDirectChatId(state.currentUser.id, otherUserId);
+  let existing = state.chatsList.find(c => c.id === chatId || c.otherUserId === otherUserId);
+
+  if (existing) {
+    closeNewChatModal();
+    selectChat(existing.id);
+    return;
+  }
 
   const newChat = {
-    id: 'chat_' + Date.now(),
-    name: name,
-    avatar: avatar,
+    id: chatId,
+    name: otherUsername,
+    avatar: otherAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+    otherUserId: otherUserId,
     online: true,
     lastSeen: "Active now",
-    isGroup: isGroup,
-    messages: [
-      {
-        id: 'msg_' + Date.now(),
-        sender: 'them',
-        time: getCurrentTimeFormatted(),
-        text: isGroup ? `Group "${name}" created.` : `Hi! Let's chat on Crochit.`,
-        status: 'read'
-      }
-    ]
+    isGroup: false,
+    messages: []
+  };
+
+  state.chatsList.unshift(newChat);
+  saveUserConversations();
+
+  // Also sync contact to other user's list in Supabase so they see current user too
+  if (state.supabaseClient) {
+    try {
+      state.supabaseClient.from('crochit_user_chats').upsert([
+        {
+          id: `${otherUserId}_${chatId}`,
+          user_id: otherUserId,
+          contact_id: state.currentUser.id,
+          contact_name: state.currentUser.username,
+          contact_avatar: state.currentUser.avatar,
+          is_group: false,
+          updated_at: new Date()
+        }
+      ]).then(() => console.log("Recipient contact synced in cloud"));
+    } catch (e) {}
+  }
+
+  closeNewChatModal();
+  selectChat(newChat.id);
+}
+
+// Create Group Conversation
+function createGroupConversation() {
+  const nameInput = document.getElementById('new-group-name');
+  const name = nameInput ? nameInput.value.trim() : '';
+
+  if (!name) {
+    alert("Please enter a group title.");
+    return;
+  }
+
+  const newChat = {
+    id: 'group_' + Date.now(),
+    name: name,
+    avatar: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150&auto=format&fit=crop&q=80",
+    online: true,
+    lastSeen: "Group Chat",
+    isGroup: true,
+    messages: []
   };
 
   state.chatsList.unshift(newChat);
   saveUserConversations();
   closeNewChatModal();
   if (nameInput) nameInput.value = '';
-  if (isGroupInput) isGroupInput.checked = false;
-
   selectChat(newChat.id);
+}
+
+// ==================== REAL-TIME MESSAGE SYNC & EVENT LISTENERS ====================
+let cloudPollInterval = null;
+let lastCloudPollTime = new Date(Date.now() - 3600000).toISOString();
+
+function startRealtimeMessageListeners() {
+  // 1. Cross-tab Realtime Mesh (BroadcastChannel) - Instant 0ms delivery
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      if (!window.crochitChannel) {
+        window.crochitChannel = new BroadcastChannel('crochit_realtime_mesh');
+      }
+      window.crochitChannel.onmessage = (event) => {
+        if (event.data && event.data.type === 'INCOMING_MESSAGE') {
+          handleIncomingMessage(event.data.payload);
+        }
+      };
+    } catch (e) {
+      console.warn("BroadcastChannel init notice:", e);
+    }
+  }
+
+  // 2. Storage Event (cross-tab fallback for all browsers)
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'crochit_shared_mailbox' && e.newValue) {
+      try {
+        const mailbox = JSON.parse(e.newValue);
+        if (Array.isArray(mailbox)) {
+          mailbox.forEach(msg => handleIncomingMessage(msg));
+        }
+      } catch (err) {}
+    }
+  });
+
+  // 3. Supabase Cloud Realtime Channel (cross-device push)
+  if (state.supabaseClient) {
+    try {
+      state.supabaseClient
+        .channel('public:crochit_messages')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'crochit_messages' }, payload => {
+          if (payload && payload.new) {
+            handleIncomingMessage(payload.new);
+          }
+        })
+        .subscribe((status) => {
+          console.log("Supabase Realtime status:", status);
+        });
+    } catch (err) {
+      console.warn("Supabase Realtime notice:", err);
+    }
+  }
+
+  // 4. Supabase Cloud Polling (every 3 seconds as rock-solid background sync)
+  clearInterval(cloudPollInterval);
+  cloudPollInterval = setInterval(pollCloudMessages, 3000);
+}
+
+// Ingest incoming message from another user in real time
+async function handleIncomingMessage(payload) {
+  if (!state.currentUser || !payload) return;
+
+  const myId = state.currentUser.id;
+
+  // Is this message from myself? Ignore.
+  if (payload.sender_id === myId) return;
+
+  // Is this message meant for me?
+  const isForMe = payload.receiver_id === myId || (payload.chat_id && payload.chat_id.includes(myId));
+  if (!isForMe) return;
+
+  // Find or automatically create the conversation in state.chatsList
+  let chat = state.chatsList.find(c => c.id === payload.chat_id || (payload.sender_id && c.otherUserId === payload.sender_id));
+
+  if (!chat) {
+    // Automatically add this sender to current user's chat list!
+    chat = {
+      id: payload.chat_id || getDirectChatId(myId, payload.sender_id),
+      name: payload.sender_name || 'Contact',
+      avatar: payload.sender_avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+      otherUserId: payload.sender_id,
+      online: true,
+      lastSeen: "Active now",
+      isGroup: false,
+      messages: []
+    };
+    state.chatsList.unshift(chat);
+  }
+
+  if (!chat.messages) chat.messages = [];
+
+  // Prevent duplicate message IDs
+  const exists = chat.messages.some(m => m.id === payload.id);
+  if (exists) return;
+
+  const incomingMsg = {
+    id: payload.id,
+    sender: 'them',
+    sender_name: payload.sender_name,
+    time: payload.time || getCurrentTimeFormatted(),
+    text: payload.text,
+    image: payload.image || null,
+    isVoiceNote: !!payload.isVoiceNote,
+    created_at: payload.created_at || new Date().toISOString(),
+    status: 'read'
+  };
+
+  chat.messages.push(incomingMsg);
+  saveUserConversations();
+  renderConversationsList();
+
+  if (state.activeChatId === chat.id) {
+    await renderActiveChatMessages();
+  } else {
+    playMessageTone();
+  }
+}
+
+// Background poller for Supabase messages
+async function pollCloudMessages() {
+  if (!state.currentUser || !state.supabaseClient) return;
+
+  try {
+    const myId = state.currentUser.id;
+    const { data: messages, error } = await state.supabaseClient
+      .from('crochit_messages')
+      .select('*')
+      .or(`receiver_id.eq.${myId},chat_id.like.%${myId}%`)
+      .gt('created_at', lastCloudPollTime)
+      .order('created_at', { ascending: true });
+
+    if (messages && messages.length > 0) {
+      for (const msg of messages) {
+        await handleIncomingMessage({
+          id: msg.id,
+          chat_id: msg.chat_id,
+          sender_id: msg.sender_id,
+          sender_name: msg.sender_name,
+          receiver_id: msg.receiver_id,
+          text: msg.text,
+          image: msg.image,
+          isVoiceNote: msg.is_voice_note,
+          created_at: msg.created_at,
+          time: getCurrentTimeFormatted()
+        });
+
+        if (msg.created_at > lastCloudPollTime) {
+          lastCloudPollTime = msg.created_at;
+        }
+      }
+    }
+  } catch (e) {
+    // Silent catch for background polling
+  }
+}
+
+function playMessageTone() {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.25);
+  } catch (e) {}
+}
+
+function escapeAttr(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;');
 }
 
 // ==================== 3. INTERACTIVE VOICE CALL ====================

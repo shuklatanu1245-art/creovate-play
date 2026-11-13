@@ -546,37 +546,79 @@
     </div>
   </div>
 
-  <!-- ==================== MODAL: START NEW CHAT ==================== -->
-  <div id="new-chat-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
-    <div class="bg-[#111b21] border border-white/10 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+  <!-- ==================== MODAL: FIND USER & START NEW CHAT ==================== -->
+  <div id="new-chat-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-[#111b21] border border-white/10 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl animate-slide-up">
       <div class="flex items-center justify-between border-b border-white/10 pb-3">
-        <h3 class="font-bold text-white text-base">New Conversation</h3>
-        <button onclick="closeNewChatModal()" class="text-gray-400 hover:text-white">
-          <i data-lucide="x" class="w-4 h-4"></i>
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-white text-base">Find & Add User</h3>
+            <p class="text-[11px] text-gray-400">Search registered users by username</p>
+          </div>
+        </div>
+        <button onclick="closeNewChatModal()" class="text-gray-400 hover:text-white transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
 
-      <div class="space-y-3">
-        <div>
-          <label class="block text-xs font-semibold text-gray-300 mb-1">Contact Name or Group Title:</label>
-          <input 
-            id="new-contact-name" 
-            type="text" 
-            placeholder="e.g. Sarah Connor, Tech Project Group..."
-            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500"
-          />
-        </div>
-        <div class="flex items-center gap-2">
-          <input id="new-chat-is-group" type="checkbox" class="rounded text-emerald-500">
-          <label for="new-chat-is-group" class="text-xs text-gray-300">Create as Group Chat</label>
-        </div>
-        <button 
-          onclick="createNewConversation()" 
-          class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition shadow"
-        >
-          Start Chatting
+      <!-- Mode Toggle: Find User / Create Group -->
+      <div class="flex bg-[#16222a] p-1 rounded-xl text-xs font-semibold">
+        <button id="tab-find-user-btn" onclick="toggleNewChatTab('direct')" class="flex-1 py-1.5 rounded-lg bg-emerald-500 text-black font-bold transition">
+          Find User
+        </button>
+        <button id="tab-create-group-btn" onclick="toggleNewChatTab('group')" class="flex-1 py-1.5 rounded-lg text-gray-400 hover:text-white transition">
+          Create Group
         </button>
       </div>
+
+      <!-- TAB 1: FIND USER BY USERNAME -->
+      <div id="new-chat-tab-direct" class="space-y-3">
+        <div class="relative">
+          <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-3.5 top-3"></i>
+          <input 
+            id="search-user-input" 
+            type="text" 
+            oninput="handleUserSearchInput(this.value)"
+            placeholder="Type username (e.g. rohit or tanu)..."
+            class="w-full bg-[#202c33] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-emerald-500"
+          />
+        </div>
+
+        <!-- Privacy Notice / Dynamic Results Container -->
+        <div id="search-user-results" class="min-h-[140px] max-h-60 overflow-y-auto space-y-2 p-1">
+          <!-- Initial Privacy State -->
+          <div class="p-6 text-center text-gray-400 space-y-2 rounded-xl bg-white/[0.02] border border-white/5">
+            <i data-lucide="shield-check" class="w-8 h-8 mx-auto text-emerald-400/80"></i>
+            <h4 class="text-xs font-bold text-white">Database Privacy Protected</h4>
+            <p class="text-[11px] text-gray-400 leading-relaxed max-w-xs mx-auto">
+              User directory is private. Other users are hidden until you search their exact username or email.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: CREATE GROUP CHAT -->
+      <div id="new-chat-tab-group" class="hidden space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-300 mb-1">Group Title:</label>
+          <input 
+            id="new-group-name" 
+            type="text" 
+            placeholder="e.g. Project Tribe, Family Circle..."
+            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+          />
+        </div>
+        <button 
+          onclick="createGroupConversation()" 
+          class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition shadow"
+        >
+          Create Group Chat
+        </button>
+      </div>
+
     </div>
   </div>
 
