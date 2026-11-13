@@ -229,23 +229,114 @@
         <!-- Messages rendered here -->
       </div>
 
+      <!-- Floating Emoji & GIF Picker Popover -->
+      <div 
+        id="emoji-gif-picker" 
+        class="hidden absolute bottom-16 left-2 sm:left-4 z-40 w-[92vw] sm:w-[420px] bg-[#16222a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col backdrop-blur-xl animate-slide-up"
+      >
+        <!-- Header: Tabs (Emoji / GIF) & Close -->
+        <div class="p-2.5 border-b border-white/10 bg-[#111b21] flex items-center justify-between">
+          <div class="flex items-center gap-1 bg-[#202c33] p-1 rounded-xl text-xs font-semibold">
+            <button 
+              id="picker-tab-emoji" 
+              onclick="switchPickerTab('emoji')" 
+              class="px-3.5 py-1.5 rounded-lg bg-emerald-500 text-black font-bold transition flex items-center gap-1.5"
+            >
+              <span>😀 Emojis</span>
+            </button>
+            <button 
+              id="picker-tab-gif" 
+              onclick="switchPickerTab('gif')" 
+              class="px-3.5 py-1.5 rounded-lg text-gray-400 hover:text-white transition flex items-center gap-1.5"
+            >
+              <span>🎬 GIFs</span>
+            </button>
+          </div>
+          <button onclick="toggleEmojiGifPicker(false)" class="p-1.5 text-gray-400 hover:text-white rounded-lg transition">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- PANE 1: EMOJIS -->
+        <div id="picker-pane-emoji" class="flex flex-col h-72">
+          <!-- Quick category selector -->
+          <div class="flex items-center justify-between px-3 py-1.5 bg-[#111b21]/70 text-xs border-b border-white/5 text-gray-400 select-none">
+            <span class="text-[11px] font-semibold text-emerald-400">Click to insert emoji</span>
+            <span class="text-[10px] text-gray-400">100+ Emojis</span>
+          </div>
+          <!-- Emoji Grid Container -->
+          <div id="emoji-grid-container" class="flex-1 overflow-y-auto p-3 space-y-3 select-none">
+            <!-- Dynamically populated by JS with categorized emojis -->
+          </div>
+        </div>
+
+        <!-- PANE 2: GIFS -->
+        <div id="picker-pane-gif" class="hidden flex flex-col h-80">
+          <!-- GIF Search & Filters -->
+          <div class="p-2.5 border-b border-white/5 bg-[#111b21] space-y-2">
+            <div class="relative">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5"></i>
+              <input 
+                id="gif-search-input" 
+                type="text" 
+                placeholder="Search GIFs (e.g. laughing, dancing, thumbs up)..." 
+                oninput="handleGifSearchInput(this.value)"
+                class="w-full bg-[#202c33] text-xs text-white placeholder-gray-400 rounded-xl pl-8 pr-3 py-2 border border-white/5 focus:outline-none focus:border-purple-500"
+              />
+            </div>
+            <!-- Quick Category Tags -->
+            <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-[10px] no-scrollbar">
+              <button onclick="filterGifsByTag('all')" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-emerald-500 hover:text-black font-semibold transition shrink-0">🔥 All</button>
+              <button onclick="filterGifsByTag('laugh')" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-emerald-500 hover:text-black font-semibold transition shrink-0">😂 Laugh</button>
+              <button onclick="filterGifsByTag('dance')" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-emerald-500 hover:text-black font-semibold transition shrink-0">💃 Dance</button>
+              <button onclick="filterGifsByTag('love')" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-emerald-500 hover:text-black font-semibold transition shrink-0">❤️ Love</button>
+              <button onclick="filterGifsByTag('clap')" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-emerald-500 hover:text-black font-semibold transition shrink-0">👏 Clap</button>
+              <button onclick="filterGifsByTag('party')" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-emerald-500 hover:text-black font-semibold transition shrink-0">🎉 Party</button>
+              <button onclick="filterGifsByTag('bye')" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-emerald-500 hover:text-black font-semibold transition shrink-0">👋 Bye</button>
+              <button onclick="filterGifsByTag('cat')" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-emerald-500 hover:text-black font-semibold transition shrink-0">🐱 Cats</button>
+            </div>
+          </div>
+          <!-- GIF Grid Container -->
+          <div id="gif-grid-container" class="flex-1 overflow-y-auto p-2.5 grid grid-cols-2 gap-2">
+            <!-- Dynamically populated by JS -->
+          </div>
+        </div>
+
+      </div>
+
       <!-- Chat Message Input Bar -->
       <div class="p-3 bg-[#111b21] border-t border-white/10 flex items-center gap-2 shrink-0">
-        <!-- Emoji button -->
-        <button onclick="insertQuickEmoji('😊')" title="Insert Emoji" class="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-full transition">
+        <!-- Emoji & GIF Picker Button -->
+        <button 
+          id="emoji-picker-toggle-btn"
+          onclick="toggleEmojiGifPicker()" 
+          title="Insert Emojis & Animated GIFs" 
+          class="p-2 text-gray-400 hover:text-emerald-400 hover:bg-white/5 rounded-full transition"
+        >
           <i data-lucide="smile" class="w-5 h-5"></i>
         </button>
 
-        <!-- Attachment button -->
-        <button onclick="attachSamplePhoto()" title="Send Photo" class="p-2 text-gray-400 hover:text-purple-400 hover:bg-white/5 rounded-full transition">
+        <!-- Image & File Upload Button -->
+        <button 
+          onclick="triggerMediaUpload()" 
+          title="Send Image or GIF from Device" 
+          class="p-2 text-gray-400 hover:text-purple-400 hover:bg-white/5 rounded-full transition"
+        >
           <i data-lucide="image" class="w-5 h-5"></i>
         </button>
+        <input 
+          type="file" 
+          id="media-file-input" 
+          accept="image/*,image/gif" 
+          class="hidden" 
+          onchange="handleMediaFileUpload(event)" 
+        />
 
         <!-- Text Input -->
         <input 
           id="chat-message-input" 
           type="text" 
-          placeholder="Type an end-to-end encrypted message..."
+          placeholder="Type a message or pick Emojis / GIFs..."
           class="flex-1 bg-[#2a3942] border-0 text-white placeholder-gray-400 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
         />
 

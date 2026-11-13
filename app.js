@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCloudDatabase();
   initAuthentication();
   setupEventListeners();
+  initEmojiGifPicker();
 
   if (window.lucide) {
     lucide.createIcons();
@@ -912,9 +913,11 @@ async function renderActiveChatMessages() {
 
     let imageHtml = '';
     if (msg.image) {
+      const isGif = msg.isGif || (typeof msg.image === 'string' && (msg.image.includes('.gif') || msg.image.includes('giphy.com') || msg.image.includes('data:image/gif')));
       imageHtml = `
-        <div class="mb-1 rounded-xl overflow-hidden border border-white/10 max-w-xs">
-          <img src="${msg.image}" alt="Attachment" class="w-full h-auto object-cover max-h-56 cursor-pointer" onclick="window.open('${msg.image}', '_blank')" />
+        <div class="mb-1 rounded-2xl overflow-hidden border border-white/10 max-w-xs relative group bg-black/40">
+          <img src="${msg.image}" alt="GIF/Image" class="w-full h-auto object-cover max-h-60 rounded-2xl cursor-pointer hover:opacity-95 transition" onclick="window.open('${msg.image}', '_blank')" />
+          ${isGif ? `<span class="absolute bottom-2 left-2 px-1.5 py-0.5 rounded-md bg-black/75 text-[9px] font-bold text-white tracking-widest backdrop-blur-sm border border-white/10 select-none">GIF</span>` : ''}
         </div>
       `;
     }
@@ -1178,39 +1181,297 @@ async function simulateInterceptionTest() {
   }, 900);
 }
 
-function insertQuickEmoji(emoji) {
-  const input = document.getElementById('chat-message-input');
-  if (input) {
-    input.value += emoji;
-    input.focus();
+// ==================== EMOJI & GIF ENGINE ====================
+
+const CROCHIT_EMOJI_CATEGORIES = [
+  {
+    name: "Smileys & Emotion",
+    emojis: ["😀","😃","😄","😁","😆","😅","😂","🤣","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😗","😙","😚","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸","😎","🤓","🧐","😕","😟","🙁","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👻","👽","🤖"]
+  },
+  {
+    name: "Gestures & Hands",
+    emojis: ["👋","🤚","🖐️","✋","🖖","👌","🤌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦵","🦶","👂","👃","👀","👁️","👅","👄"]
+  },
+  {
+    name: "Hearts & Love",
+    emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","💌","💋","💍","💎"]
+  },
+  {
+    name: "Party & Reactions",
+    emojis: ["🔥","💥","✨","🌟","💫","🎉","🎊","🎈","🎁","🏆","🥇","🚀","🎯","💯","⚠️","🔔","💡","⚡","🌈","☀️","🌙","⭐"]
+  },
+  {
+    name: "Food & Drinks",
+    emojis: ["🍕","🍔","🍟","🌭","🍿","🥓","🥚","🥞","🧇","🍞","🥐","🥨","🧀","🥗","🥪","🌯","🌮","🍣","🍦","🍧","🍨","🍩","🍪","🎂","🍰","🍫","🍬","🍭","☕","🍵","🥤","🧃","🍺","🍻","🥂","🍷"]
+  }
+];
+
+const CROCHIT_GIFS = [
+  { title: "Celebration Dance", url: "https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif", tags: ["party", "dance", "celebrate", "happy"] },
+  { title: "Dancing Vibing", url: "https://media.giphy.com/media/blSTtZehjAZ8I/giphy.gif", tags: ["dance", "party", "vibing"] },
+  { title: "Cat Vibe", url: "https://media.giphy.com/media/jpbnoe3UIa8TU8LM13/giphy.gif", tags: ["cat", "dance", "vibing", "music"] },
+  { title: "Minions Laughing", url: "https://media.giphy.com/media/10JhviFuU2gWD6/giphy.gif", tags: ["laugh", "funny", "minions"] },
+  { title: "Laughing Out Loud", url: "https://media.giphy.com/media/Q7ozWVYCR0nyW2rvPW/giphy.gif", tags: ["laugh", "funny", "lol"] },
+  { title: "Mind Blown", url: "https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif", tags: ["shocked", "wow", "mindblown"] },
+  { title: "Facepalm", url: "https://media.giphy.com/media/6yRVg0HWzgS88/giphy.gif", tags: ["facepalm", "oops", "smh"] },
+  { title: "Thumbs Up Yes", url: "https://media.giphy.com/media/111ebonMs90YLu/giphy.gif", tags: ["thumbs up", "ok", "yes", "good"] },
+  { title: "Applause Clap", url: "https://media.giphy.com/media/7rj2ZgttvgomY/giphy.gif", tags: ["clap", "applause", "bravo"] },
+  { title: "Heart Love Hug", url: "https://media.giphy.com/media/M90mJvfWfd5mbUuULX/giphy.gif", tags: ["love", "heart", "hug"] },
+  { title: "Sending Love", url: "https://media.giphy.com/media/l4pTdcifPZLpDjL1e/giphy.gif", tags: ["love", "kiss", "heart"] },
+  { title: "Cute Cat Love", url: "https://media.giphy.com/media/MDJ9IbxxvDUQM/giphy.gif", tags: ["cat", "love", "cute"] },
+  { title: "Waving Bye", url: "https://media.giphy.com/media/m9eG1qVjvNINLFtg24/giphy.gif", tags: ["bye", "wave", "goodbye"] },
+  { title: "Nodding Agree", url: "https://media.giphy.com/media/6cFcUiCG5eONW/giphy.gif", tags: ["yes", "agree", "nod"] },
+  { title: "Mic Drop", url: "https://media.giphy.com/media/3o7qDSOvfaCO9b3MlO/giphy.gif", tags: ["mic drop", "done", "boss"] },
+  { title: "Happy Dance", url: "https://media.giphy.com/media/pa37AAGzKXoek/giphy.gif", tags: ["dance", "happy", "party"] },
+  { title: "Popcorn Watching", url: "https://media.giphy.com/media/GLbiGvv9RiNpPdzyxs/giphy.gif", tags: ["popcorn", "drama", "watching"] },
+  { title: "Shrug", url: "https://media.giphy.com/media/eLvhchyvNUPuU/giphy.gif", tags: ["shrug", "dunno", "whatever"] },
+  { title: "Snoopy Happy Dance", url: "https://media.giphy.com/media/J6fjW4xvv2T2uPgk8M/giphy.gif", tags: ["dance", "happy", "snoopy"] },
+  { title: "Cheers Drinks", url: "https://media.giphy.com/media/g9582DNuQppxC/giphy.gif", tags: ["party", "cheers", "celebrate"] }
+];
+
+function initEmojiGifPicker() {
+  renderEmojiGrid();
+  renderGifGrid(CROCHIT_GIFS);
+
+  // Close picker when clicking outside
+  document.addEventListener('click', (e) => {
+    const picker = document.getElementById('emoji-gif-picker');
+    const toggleBtn = document.getElementById('emoji-picker-toggle-btn');
+    if (!picker || picker.classList.contains('hidden')) return;
+
+    if (!picker.contains(e.target) && !toggleBtn.contains(e.target)) {
+      toggleEmojiGifPicker(false);
+    }
+  });
+}
+
+function toggleEmojiGifPicker(forcedState) {
+  const picker = document.getElementById('emoji-gif-picker');
+  if (!picker) return;
+
+  const shouldOpen = typeof forcedState === 'boolean' ? forcedState : picker.classList.contains('hidden');
+  picker.classList.toggle('hidden', !shouldOpen);
+
+  if (shouldOpen && window.lucide) {
+    lucide.createIcons();
   }
 }
 
-async function attachSamplePhoto() {
-  const photos = [
-    "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80"
-  ];
-  const photo = photos[Math.floor(Math.random() * photos.length)];
+function switchPickerTab(tab) {
+  const isEmoji = tab === 'emoji';
+  const paneEmoji = document.getElementById('picker-pane-emoji');
+  const paneGif = document.getElementById('picker-pane-gif');
+  const tabEmoji = document.getElementById('picker-tab-emoji');
+  const tabGif = document.getElementById('picker-tab-gif');
 
+  if (paneEmoji) paneEmoji.classList.toggle('hidden', !isEmoji);
+  if (paneGif) paneGif.classList.toggle('hidden', isEmoji);
+
+  if (tabEmoji) {
+    tabEmoji.className = isEmoji
+      ? "px-3.5 py-1.5 rounded-lg bg-emerald-500 text-black font-bold transition flex items-center gap-1.5"
+      : "px-3.5 py-1.5 rounded-lg text-gray-400 hover:text-white transition flex items-center gap-1.5";
+  }
+  if (tabGif) {
+    tabGif.className = !isEmoji
+      ? "px-3.5 py-1.5 rounded-lg bg-purple-600 text-white font-bold transition flex items-center gap-1.5"
+      : "px-3.5 py-1.5 rounded-lg text-gray-400 hover:text-white transition flex items-center gap-1.5";
+  }
+
+  if (!isEmoji) {
+    const searchInput = document.getElementById('gif-search-input');
+    if (searchInput) setTimeout(() => searchInput.focus(), 80);
+  }
+}
+
+function renderEmojiGrid() {
+  const container = document.getElementById('emoji-grid-container');
+  if (!container) return;
+
+  let html = '';
+  CROCHIT_EMOJI_CATEGORIES.forEach(cat => {
+    html += `
+      <div class="space-y-1.5">
+        <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider sticky top-0 bg-[#16222a]/95 py-1 backdrop-blur-sm z-10">
+          ${cat.name}
+        </div>
+        <div class="grid grid-cols-8 sm:grid-cols-9 gap-1.5 text-center">
+          ${cat.emojis.map(em => `
+            <button 
+              type="button"
+              onclick="insertEmojiIntoInput('${em}')" 
+              class="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl hover:bg-white/10 active:scale-125 transition select-none text-xl sm:text-2xl"
+              title="${em}"
+            >
+              ${em}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+function insertEmojiIntoInput(emoji) {
+  const input = document.getElementById('chat-message-input');
+  if (!input) return;
+
+  const start = input.selectionStart || input.value.length;
+  const end = input.selectionEnd || input.value.length;
+  const val = input.value;
+
+  input.value = val.substring(0, start) + emoji + val.substring(end);
+  const newPos = start + emoji.length;
+  input.focus();
+  input.setSelectionRange(newPos, newPos);
+}
+
+function renderGifGrid(gifs) {
+  const container = document.getElementById('gif-grid-container');
+  if (!container) return;
+
+  if (!gifs || gifs.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-2 py-8 text-center text-gray-400 space-y-1">
+        <p class="text-xs">No GIFs found.</p>
+        <p class="text-[10px] text-gray-500">Try searching "dance", "laugh", "happy", or "love".</p>
+      </div>
+    `;
+    return;
+  }
+
+  let html = '';
+  gifs.forEach(gif => {
+    html += `
+      <div 
+        onclick="sendGifMessage('${escapeAttr(gif.url)}', '${escapeAttr(gif.title)}')"
+        class="relative rounded-xl overflow-hidden bg-black/40 border border-white/5 hover:border-emerald-500/60 transition cursor-pointer group h-28 sm:h-32"
+        title="Click to send ${escapeHtml(gif.title)}"
+      >
+        <img 
+          src="${gif.url}" 
+          alt="${escapeHtml(gif.title)}" 
+          loading="lazy"
+          class="w-full h-full object-cover group-hover:scale-105 transition duration-300" 
+        />
+        <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2 opacity-90 group-hover:opacity-100">
+          <span class="text-[10px] font-semibold text-white truncate max-w-full">${escapeHtml(gif.title)}</span>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+function handleGifSearchInput(query) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) {
+    renderGifGrid(CROCHIT_GIFS);
+    return;
+  }
+
+  const filtered = CROCHIT_GIFS.filter(g => {
+    return g.title.toLowerCase().includes(q) || g.tags.some(t => t.includes(q));
+  });
+
+  renderGifGrid(filtered);
+}
+
+function filterGifsByTag(tag) {
+  const searchInput = document.getElementById('gif-search-input');
+  if (searchInput) searchInput.value = '';
+
+  if (tag === 'all') {
+    renderGifGrid(CROCHIT_GIFS);
+    return;
+  }
+
+  const filtered = CROCHIT_GIFS.filter(g => g.tags.includes(tag));
+  renderGifGrid(filtered);
+}
+
+// 1-Click Send Animated GIF in Active Chat
+async function sendGifMessage(gifUrl, title) {
   const chat = state.chatsList.find(c => c.id === state.activeChatId);
-  if (!chat) return;
+  if (!chat) {
+    alert("Please select or start a chat first to send a GIF.");
+    openNewChatModal();
+    return;
+  }
 
   const newMsg = {
-    id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+    id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
     chat_id: chat.id,
     sender: 'me',
     sender_id: state.currentUser ? state.currentUser.id : 'usr',
     sender_name: state.currentUser ? state.currentUser.username : 'User',
     receiver_id: chat.otherUserId || '',
     time: getCurrentTimeFormatted(),
-    text: "Photo 📸",
-    image: photo,
+    text: title || "GIF",
+    image: gifUrl,
+    isGif: true,
     created_at: new Date().toISOString(),
     status: 'delivered'
   };
 
   await dispatchOutgoingMessage(chat, newMsg);
+  toggleEmojiGifPicker(false);
+}
+
+// Trigger Local Device Image / GIF File Upload
+function triggerMediaUpload() {
+  const fileInput = document.getElementById('media-file-input');
+  if (fileInput) {
+    fileInput.value = '';
+    fileInput.click();
+  }
+}
+
+// Handle Image or GIF file picked from user device
+async function handleMediaFileUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const chat = state.chatsList.find(c => c.id === state.activeChatId);
+  if (!chat) {
+    alert("Please select or start a conversation first to send an image.");
+    openNewChatModal();
+    return;
+  }
+
+  // Check file size (limit to 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    alert("Please select an image smaller than 5MB.");
+    return;
+  }
+
+  const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const dataUrl = e.target.result;
+    const newMsg = {
+      id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+      chat_id: chat.id,
+      sender: 'me',
+      sender_id: state.currentUser ? state.currentUser.id : 'usr',
+      sender_name: state.currentUser ? state.currentUser.username : 'User',
+      receiver_id: chat.otherUserId || '',
+      time: getCurrentTimeFormatted(),
+      text: isGif ? "GIF" : "Photo 📸",
+      image: dataUrl,
+      isGif: isGif,
+      created_at: new Date().toISOString(),
+      status: 'delivered'
+    };
+
+    await dispatchOutgoingMessage(chat, newMsg);
+  };
+
+  reader.readAsDataURL(file);
 }
 
 async function sendVoiceNote() {
