@@ -224,20 +224,20 @@
         </div>
       </div>
 
-      <!-- ==================== 20-MINUTE EMERGENCY CALL SESSION RESERVATION ==================== -->
+      <!-- ==================== 0 KB EMERGENCY CALL SESSION RESERVATION ==================== -->
       <div id="emergency-call-top-bar" class="hidden p-2.5 bg-gradient-to-r from-amber-950/80 via-[#18232a] to-emerald-950/80 border-b border-amber-500/40 flex items-center justify-between text-xs px-4 animate-slide-up z-20">
         <div class="flex items-center gap-2.5 truncate">
           <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0"></span>
           <div class="truncate">
-            <span class="text-amber-300 font-semibold">Offline Emergency Grace Active:</span>
-            <span id="top-bar-contact-name" class="font-bold text-white ml-1">Contact</span>
-            <span class="text-gray-300 text-[10px] ml-1.5 font-mono">(Session Reserved: <span id="top-bar-grace-timer" class="text-amber-400 font-bold">20:00</span>)</span>
+            <span class="text-amber-300 font-semibold">0 KB Emergency Hold:</span>
+            <span id="top-bar-contact-name" class="font-bold text-white ml-1">@contact</span>
+            <span class="text-gray-300 text-[10px] ml-1.5 font-mono">(Hold: <span id="top-bar-grace-timer" class="text-amber-400 font-bold">10:00</span>)</span>
           </div>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           <button onclick="openEmergencyFlashModal()" class="px-2.5 py-1 rounded-lg bg-red-600/30 hover:bg-red-600/50 border border-red-500/50 text-red-200 text-xs font-bold transition flex items-center gap-1 shadow">
             <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-300"></i>
-            <span>Offline SOS</span>
+            <span>0 KB SOS</span>
           </button>
           <button onclick="reconnectReservedCall()" class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition flex items-center gap-1 shadow">
             <i data-lucide="phone" class="w-3.5 h-3.5"></i>
@@ -415,23 +415,23 @@
         <span class="w-1.5 h-3 bg-emerald-400 rounded-full animate-pulse"></span>
       </div>
 
-      <!-- Emergency Offline Grace Banner (20 Min Buffer) -->
+      <!-- Emergency Offline Grace Banner (10-Min 0 KB Buffer) -->
       <div id="call-offline-grace-banner" class="hidden w-full p-3 rounded-2xl bg-amber-500/15 border border-amber-500/35 text-amber-200 text-xs space-y-1.5 text-center animate-pulse">
         <div class="flex items-center justify-center gap-1.5 font-bold text-amber-400">
-          <i data-lucide="wifi-off" class="w-4 h-4"></i>
-          <span>Offline Grace Active (20-Min Buffer)</span>
+          <i data-lucide="zap" class="w-4 h-4 text-amber-300"></i>
+          <span>0 KB Emergency Voice Buffer (10-Min Hold)</span>
         </div>
         <p class="text-[10px] text-gray-300">
-          Internet dropped! Call session reserved for <span id="offline-grace-timer" class="font-bold font-mono text-white">20:00</span>.
+          Wi-Fi / Power cut detected! Call & live audio buffer held for <span id="offline-grace-timer" class="font-bold font-mono text-white">10:00</span>.
         </p>
         <div class="flex items-center justify-center gap-2 pt-1 text-[10px]">
           <button onclick="recordOfflineVoiceCapsule()" class="px-2.5 py-1 rounded-lg bg-amber-500 text-black font-bold hover:bg-amber-400 transition flex items-center gap-1">
             <i data-lucide="mic" class="w-3 h-3"></i>
-            <span>Voice Capsule</span>
+            <span>Speak in 10-Min Buffer</span>
           </button>
           <button onclick="openEmergencyFlashModal()" class="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold transition flex items-center gap-1 shadow-lg shadow-red-500/30 animate-pulse">
             <i data-lucide="zap" class="w-3 h-3 text-amber-300"></i>
-            <span>⚡ Instant SOS</span>
+            <span>⚡ 0 KB Flash</span>
           </button>
           <button onclick="reconnectCallSession()" class="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold transition flex items-center gap-1">
             <i data-lucide="refresh-cw" class="w-3 h-3"></i>
@@ -447,7 +447,7 @@
           <i data-lucide="mic" class="w-5 h-5"></i>
         </button>
 
-        <!-- End Call Button (Preserves 20-min session if offline) -->
+        <!-- End Call Button (Preserves 10-min session if offline) -->
         <button onclick="endVoiceCall()" class="w-14 h-14 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition shadow-lg shadow-red-600/30" title="End Call">
           <i data-lucide="phone-off" class="w-6 h-6"></i>
         </button>
@@ -458,7 +458,7 @@
         </button>
 
         <!-- Instant Emergency Flash SOS Button -->
-        <button id="voice-emergency-sos-btn" onclick="openEmergencyFlashModal()" class="w-12 h-12 rounded-full bg-red-600/30 hover:bg-red-600 border border-red-500/50 text-red-200 hover:text-white flex items-center justify-center transition shadow-lg shadow-red-500/20" title="Send Instant Emergency Message (Works Without Internet)">
+        <button id="voice-emergency-sos-btn" onclick="openEmergencyFlashModal()" class="w-12 h-12 rounded-full bg-red-600/30 hover:bg-red-600 border border-red-500/50 text-red-200 hover:text-white flex items-center justify-center transition shadow-lg shadow-red-500/20" title="Send 0 KB Instant Emergency Message (No Internet / No Phone No.)">
           <i data-lucide="zap" class="w-5 h-5 text-amber-300"></i>
         </button>
       </div>
@@ -466,16 +466,16 @@
       <!-- Test / Simulate Internet Cut Button -->
       <button 
         onclick="simulateInternetCutToggle()" 
-        title="Test what happens when internet drops during a call"
+        title="Test 0 KB 10-minute emergency call hold when Wi-Fi or electricity drops"
         class="text-[10px] text-gray-400 hover:text-amber-400 flex items-center gap-1 transition underline pt-1"
       >
-        <i data-lucide="wifi" class="w-3 h-3"></i>
-        <span id="simulate-cut-label">Simulate Internet Cut (Test 20-Min Grace)</span>
+        <i data-lucide="wifi-off" class="w-3 h-3"></i>
+        <span id="simulate-cut-label">Simulate Wi-Fi Cut (Test 0 KB 10-Min Emergency)</span>
       </button>
     </div>
   </div>
 
-  <!-- ==================== MODAL: EMERGENCY FLASH SOS DISPATCHER (NO-INTERNET CROSS-DISTANCE) ==================== -->
+  <!-- ==================== MODAL: EMERGENCY FLASH SOS DISPATCHER (0 KB NO PHONE NO.) ==================== -->
   <div id="emergency-flash-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4">
     <div class="bg-[#111b21] border border-red-500/30 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl relative animate-slide-up">
       
@@ -487,10 +487,10 @@
           </div>
           <div>
             <h3 class="font-bold text-white text-base flex items-center gap-1.5">
-              <span>Emergency Flash SOS</span>
-              <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/30 text-red-300 border border-red-500/40 font-mono">Zero-Internet</span>
+              <span>0 KB Emergency Flash</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/30 text-red-300 border border-red-500/40 font-mono">No Phone No.</span>
             </h3>
-            <p class="text-[11px] text-gray-400">Reaches anywhere across the globe without internet data</p>
+            <p class="text-[11px] text-gray-400">Wi-Fi & power cut survival • Direct to @username</p>
           </div>
         </div>
         <button onclick="closeEmergencyFlashModal()" class="p-1.5 text-gray-400 hover:text-white rounded-lg transition">
@@ -498,48 +498,33 @@
         </button>
       </div>
 
-      <!-- Recipient Card & Phone Number Binding -->
-      <div class="p-3 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2.5">
-            <img id="flash-recipient-avatar" src="" class="w-9 h-9 rounded-full object-cover border border-emerald-500" alt="Avatar">
-            <div>
-              <h4 id="flash-recipient-name" class="font-bold text-white text-xs">Recipient</h4>
-              <p class="text-[10px] text-emerald-400">Call Contact • Ready for Direct Cellular Relay</p>
-            </div>
+      <!-- Recipient Card (Pure @Username - No Phone Number) -->
+      <div class="p-3 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <img id="flash-recipient-avatar" src="" class="w-10 h-10 rounded-full object-cover border border-emerald-500" alt="Avatar">
+          <div>
+            <h4 id="flash-recipient-name" class="font-bold text-white text-xs">Recipient</h4>
+            <p id="flash-recipient-username" class="text-[11px] text-emerald-400 font-mono">@username</p>
           </div>
-          <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Direct Channel</span>
         </div>
-
-        <div class="flex items-center gap-2 pt-1 border-t border-white/5">
-          <i data-lucide="phone" class="w-3.5 h-3.5 text-gray-400 shrink-0"></i>
-          <input 
-            id="flash-recipient-phone" 
-            type="tel" 
-            placeholder="Mobile number for cellular SMS (e.g. +91 9876543210)" 
-            class="bg-transparent text-white text-xs w-full outline-none placeholder-gray-500 font-mono"
-          >
-          <button onclick="saveRecipientPhoneFromModal()" class="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white text-[10px] font-semibold transition shrink-0">
-            Save
-          </button>
-        </div>
+        <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-mono">0 KB Outbox Ready</span>
       </div>
 
-      <!-- Quick 1-Tap Preset Messages -->
+      <!-- Quick 1-Tap Outage Presets -->
       <div class="space-y-1.5">
         <label class="text-[11px] font-semibold text-gray-300 flex items-center justify-between">
-          <span>Quick 1-Tap Emergency Messages:</span>
-          <span class="text-[10px] text-gray-500">Tap to insert</span>
+          <span>Wi-Fi / Power Outage Quick Presets:</span>
+          <span class="text-[10px] text-gray-500">Tap to select</span>
         </label>
         <div class="flex flex-wrap gap-1.5">
-          <button onclick="setFlashPresetMessage('🚨 Internet cut ho gaya! Call disconnect ho gayi, please call me on my phone.')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-gray-300 hover:text-white transition text-left">
-            🚨 Call cut ho gayi
+          <button onclick="setFlashPresetMessage('💡 Light chali gayi, Wi-Fi band ho gaya! Call 10-min emergency buffer par active hai.')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-gray-300 hover:text-white transition text-left">
+            💡 Light/Wi-Fi band ho gaya
           </button>
-          <button onclick="setFlashPresetMessage('📍 Main location par pahunch gaya hoon, gate ke paas milo.')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-gray-300 hover:text-white transition text-left">
-            📍 Location pe hoon
+          <button onclick="setFlashPresetMessage('⏳ Power aane tak 5-10 min wait karo, main call buffer pe continue bol raha hoon.')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-gray-300 hover:text-white transition text-left">
+            ⏳ 5-10 min wait karo
           </button>
-          <button onclick="setFlashPresetMessage('⏳ Mera network drop ho gaya hai, 5 minute wait karo main reconnect karta hoon.')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-gray-300 hover:text-white transition text-left">
-            ⏳ 5 min wait karo
+          <button onclick="setFlashPresetMessage('📍 Location par bahar milo / gate ke paas aao.')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-gray-300 hover:text-white transition text-left">
+            📍 Gate ke paas milo
           </button>
           <button onclick="setFlashPresetMessage('✅ Urgent: Kaam confirm ho gaya hai, proceed kar do.')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-gray-300 hover:text-white transition text-left">
             ✅ Kaam confirm ho gaya
@@ -549,7 +534,7 @@
 
       <!-- Message Text Area -->
       <div class="space-y-1.5">
-        <label class="text-[11px] font-semibold text-gray-300">Message to dispatch instantly:</label>
+        <label class="text-[11px] font-semibold text-gray-300">Emergency message to dispatch (0 KB):</label>
         <textarea 
           id="emergency-flash-text" 
           rows="3" 
@@ -558,49 +543,49 @@
         ></textarea>
       </div>
 
-      <!-- Transmission Methods -->
+      <!-- Transmission Methods (100% Phone-Free) -->
       <div class="space-y-2 pt-1">
-        <!-- Route 1: Cellular GSM SMS (100% Zero Internet, Anywhere in World) -->
+        <!-- Route 1: 0 KB In-App Flash (Direct to @username) -->
         <button 
-          onclick="dispatchEmergencyGsmSms()" 
+          onclick="dispatchZeroDataInAppFlash()" 
           class="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold text-xs flex items-center justify-between shadow-lg shadow-red-600/20 transition"
         >
           <div class="flex items-center gap-2">
-            <i data-lucide="message-square" class="w-4 h-4"></i>
+            <i data-lucide="zap" class="w-4 h-4 text-amber-300"></i>
             <div class="text-left">
-              <p class="font-bold">📱 Send via GSM Cellular SMS</p>
-              <p class="text-[10px] text-white/80 font-normal">Works with 0 KB internet data • Reaches anywhere in the world</p>
+              <p class="font-bold">⚡ Send 0 KB In-App Flash</p>
+              <p class="text-[10px] text-white/80 font-normal">Dispatches to @username • 0 KB internet required</p>
             </div>
           </div>
-          <i data-lucide="chevron-right" class="w-4 h-4 shrink-0"></i>
+          <i data-lucide="arrow-right" class="w-4 h-4 shrink-0"></i>
         </button>
 
         <!-- Secondary Actions Grid -->
         <div class="grid grid-cols-2 gap-2">
-          <!-- Route 2: Zero-Data Micro-Burst Pulse -->
+          <!-- Route 2: 10-Min Live Voice Stream Buffer -->
           <button 
-            onclick="dispatchZeroDataMicroBurst()" 
+            onclick="closeEmergencyFlashModal(); recordOfflineVoiceCapsule();" 
             class="py-2 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-200 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition"
-            title="Sends ultra-compressed 40-byte pulse over 2G/carrier echo"
+            title="Keep speaking into 10-min offline voice capsule"
           >
-            <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i>
-            <span>⚡ Micro-Burst Pulse</span>
+            <i data-lucide="mic" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span>🎙️ 10-Min Voice Buffer</span>
           </button>
 
-          <!-- Route 3: Direct Cellular Phone Call (tel:) -->
+          <!-- Route 3: Local Hotspot / LAN Connect -->
           <button 
-            onclick="dispatchDirectGsmCall()" 
+            onclick="triggerLocalHotspotConnect()" 
             class="py-2 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-200 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition"
-            title="Switches dropped call to regular SIM phone call"
+            title="Direct P2P local Wi-Fi without cellular recharge"
           >
-            <i data-lucide="phone-call" class="w-3.5 h-3.5 text-emerald-400"></i>
-            <span>📞 Direct Mobile Call</span>
+            <i data-lucide="wifi" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>📶 Local Hotspot LAN</span>
           </button>
         </div>
       </div>
 
       <!-- Live Delivery Status Banner -->
-      <div id="flash-status-banner" class="hidden p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs text-center font-medium">
+      <div id="flash-status-banner" class="hidden p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs text-center font-medium">
         ✓ Dispatched!
       </div>
     </div>
@@ -931,14 +916,27 @@
       <!-- Auth Form -->
       <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="space-y-3.5">
         <div id="auth-username-field">
-          <label class="block text-xs font-semibold text-gray-300 mb-1">Your Full Name:</label>
-          <input 
-            id="auth-username-input" 
-            type="text" 
-            required
-            placeholder="Enter your name"
-            class="w-full bg-[#202c33] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
-          />
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-xs font-semibold text-gray-300">Unique @Username (like Instagram):</label>
+            <span class="text-[10px] text-gray-400">1 person per username</span>
+          </div>
+          <div class="relative flex items-center">
+            <span class="absolute left-3 text-emerald-400 font-bold text-sm">@</span>
+            <input 
+              id="auth-username-input" 
+              type="text" 
+              required
+              placeholder="username (e.g. rohit or tanu_1)"
+              oninput="handleUsernameInput(this.value)"
+              class="w-full bg-[#202c33] border border-white/10 rounded-xl pl-8 pr-9 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 font-mono"
+            />
+            <span id="auth-username-icon" class="absolute right-3 hidden text-xs font-bold"></span>
+          </div>
+          <div id="auth-username-status" class="text-[11px] mt-1 hidden"></div>
+          <div id="auth-username-suggestions-container" class="hidden mt-1.5 space-y-1">
+            <span class="text-[10px] text-gray-400">Available variations (click to use):</span>
+            <div id="auth-username-suggestions" class="flex flex-wrap gap-1"></div>
+          </div>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-300 mb-1">Email Address:</label>

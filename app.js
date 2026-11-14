@@ -14,9 +14,9 @@ let state = {
   voiceCallTimer: null,
   voiceCallSeconds: 0,
   isVoiceMuted: false,
-  // 20-Minute Offline Emergency Grace Engine
+  // 0 KB Offline Emergency Grace Engine (10-Min Minimum Hold)
   isCallOfflineSimulated: false,
-  emergencyGraceSeconds: 1200,
+  emergencyGraceSeconds: 600,
   emergencyGraceTimer: null,
   reservedCallContact: null,
   offlineVoiceRecorder: null,
@@ -538,6 +538,115 @@ function toggleAuthMode(mode) {
   if (submitBtn) submitBtn.textContent = isSignIn ? "Sign In" : "Create Account";
 }
 
+// ==================== INSTAGRAM-STYLE UNIQUE USERNAME ENGINE ====================
+let usernameCheckTimeout = null;
+
+function handleUsernameInput(val) {
+  clearTimeout(usernameCheckTimeout);
+  const statusEl = document.getElementById('auth-username-status');
+  const iconEl = document.getElementById('auth-username-icon');
+  const suggContainer = document.getElementById('auth-username-suggestions-container');
+  const suggBox = document.getElementById('auth-username-suggestions');
+
+  if (!val) {
+    if (statusEl) statusEl.classList.add('hidden');
+    if (iconEl) iconEl.classList.add('hidden');
+    if (suggContainer) suggContainer.classList.add('hidden');
+    return;
+  }
+
+  usernameCheckTimeout = setTimeout(async () => {
+    const clean = val.trim().toLowerCase().replace(/^@/, '');
+    if (!clean) return;
+
+    if (!/^[a-zA-Z0-9._]{3,30}$/.test(clean)) {
+      if (statusEl) {
+        statusEl.className = "text-[11px] mt-1 text-red-400 font-semibold";
+        statusEl.textContent = "3-30 chars. Only letters, numbers, _, and . allowed";
+        statusEl.classList.remove('hidden');
+      }
+      if (iconEl) {
+        iconEl.innerHTML = `<span class="text-red-400">✗</span>`;
+        iconEl.classList.remove('hidden');
+      }
+      if (suggContainer) suggContainer.classList.add('hidden');
+      return;
+    }
+
+    let users = [];
+    try { users = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || []; } catch (e) {}
+
+    let isTaken = users.some(u => (u.username || '').toLowerCase() === clean);
+
+    if (!isTaken && state.supabaseClient) {
+      try {
+        const { data: match } = await state.supabaseClient
+          .from('crochit_users')
+          .select('id')
+          .ilike('username', clean)
+          .maybeSingle();
+        if (match) isTaken = true;
+      } catch (e) {}
+    }
+
+    if (isTaken) {
+      if (statusEl) {
+        statusEl.className = "text-[11px] mt-1 text-amber-400 font-semibold";
+        statusEl.textContent = `❌ @${clean} is already taken! Try these variations:`;
+        statusEl.classList.remove('hidden');
+      }
+      if (iconEl) {
+        iconEl.innerHTML = `<span class="text-amber-400">✗</span>`;
+        iconEl.classList.remove('hidden');
+      }
+
+      // Generate Instagram-like suggestions
+      const suggestions = generateUsernameSuggestions(clean, users);
+      if (suggBox && suggestions.length > 0) {
+        suggBox.innerHTML = suggestions.map(s => `
+          <button type="button" onclick="applyUsernameSuggestion('${s}')" class="px-2 py-0.5 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono transition">
+            @${s}
+          </button>
+        `).join('');
+        if (suggContainer) suggContainer.classList.remove('hidden');
+      }
+    } else {
+      if (statusEl) {
+        statusEl.className = "text-[11px] mt-1 text-emerald-400 font-semibold";
+        statusEl.textContent = `✓ @${clean} is available!`;
+        statusEl.classList.remove('hidden');
+      }
+      if (iconEl) {
+        iconEl.innerHTML = `<span class="text-emerald-400">✓</span>`;
+        iconEl.classList.remove('hidden');
+      }
+      if (suggContainer) suggContainer.classList.add('hidden');
+    }
+  }, 180);
+}
+
+function generateUsernameSuggestions(base, existingUsers = []) {
+  const variations = [
+    `${base}_1`,
+    `${base}_01`,
+    `${base}_official`,
+    `${base}.${Math.floor(Math.random() * 89) + 10}`,
+    `${base}_${Math.floor(Math.random() * 899) + 100}`,
+    `real_${base}`
+  ];
+
+  const userList = existingUsers.map(u => (u.username || '').toLowerCase());
+  return variations.filter(v => !userList.includes(v)).slice(0, 4);
+}
+
+function applyUsernameSuggestion(sugg) {
+  const input = document.getElementById('auth-username-input');
+  if (input) {
+    input.value = sugg;
+    handleUsernameInput(sugg);
+  }
+}
+
 // Handle Sign In or Sign Up Form Submit
 async function handleAuthSubmit(event) {
   event.preventDefault();
@@ -563,13 +672,46 @@ async function handleAuthSubmit(event) {
   }
 
   if (state.authMode === 'signup') {
-    // 1. Sign Up Mode
+    // 1. Sign Up Mode (Instagram-style Unique @username)
     if (!username) {
-      alert("Please enter your name.");
+      alert("Please choose a unique @username.");
       return;
     }
 
-    // Check if account already exists locally
+    const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
+    if (!/^[a-zA-Z0-9._]{3,30}$/.test(cleanUsername)) {
+      alert("Username must be 3-30 characters long and can only contain letters, numbers, underscores (_), and periods (.).");
+      return;
+    }
+
+    // Check if username already exists locally
+    const usernameTakenLocal = users.some(u => (u.username || '').toLowerCase() === cleanUsername);
+    if (usernameTakenLocal) {
+      const suggestions = generateUsernameSuggestions(cleanUsername, users);
+      alert(`@${cleanUsername} is already taken! Try adding numbers or underscores, like: @${suggestions.join(', @')}`);
+      return;
+    }
+
+    // Check if username already exists in cloud Supabase database
+    if (state.supabaseClient) {
+      try {
+        const { data: cloudUserMatch } = await state.supabaseClient
+          .from('crochit_users')
+          .select('id, username')
+          .ilike('username', cleanUsername)
+          .maybeSingle();
+
+        if (cloudUserMatch) {
+          const suggestions = generateUsernameSuggestions(cleanUsername, users);
+          alert(`@${cleanUsername} is already taken in the database! Try: @${suggestions.join(', @')}`);
+          return;
+        }
+      } catch (e) {
+        console.warn("Cloud username lookup notice:", e);
+      }
+    }
+
+    // Check if email already exists locally
     const existing = users.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (existing) {
       alert("An account with this email already exists. Please Sign In.");
@@ -577,7 +719,7 @@ async function handleAuthSubmit(event) {
       return;
     }
 
-    // Check cloud database if connected
+    // Check cloud database for email if connected
     if (state.supabaseClient) {
       try {
         const { data: existingCloud } = await state.supabaseClient
@@ -598,7 +740,7 @@ async function handleAuthSubmit(event) {
 
     const newUser = {
       id: 'usr_' + Date.now(),
-      username: username,
+      username: cleanUsername,
       email: email,
       password: password,
       avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
@@ -1557,37 +1699,13 @@ function handleUserSearchInput(query) {
   }, 250);
 }
 
-// Privacy-Preserving User Search:
-// Database users are NEVER listed publicly by default.
-// Only matched users appear when searching for their specific username or email.
+// ==================== INSTAGRAM-STYLE USER EXPLORE & SEARCH DIRECTORY ====================
+// Lists registered users with unique @username badges and filters live in real time.
 async function searchUsersInDatabase(query) {
   const container = document.getElementById('search-user-results');
   if (!container) return;
 
-  const cleanQuery = (query || '').trim().toLowerCase();
-
-  // If query is empty: keep the database privacy state!
-  if (!cleanQuery) {
-    container.innerHTML = `
-      <div class="p-6 text-center text-gray-400 space-y-2 rounded-xl bg-white/[0.02] border border-white/5">
-        <i data-lucide="shield-check" class="w-8 h-8 mx-auto text-emerald-400/80"></i>
-        <h4 class="text-xs font-bold text-white">Database Privacy Protected</h4>
-        <p class="text-[11px] text-gray-400 leading-relaxed max-w-xs mx-auto">
-          User directory is private. Other users are hidden until you search their exact username or email.
-        </p>
-      </div>
-    `;
-    if (window.lucide) lucide.createIcons();
-    return;
-  }
-
-  // Show searching indicator
-  container.innerHTML = `
-    <div class="p-6 text-center text-gray-400 space-y-2">
-      <div class="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-      <p class="text-xs text-gray-300">Searching user database for "${escapeHtml(cleanQuery)}"...</p>
-    </div>
-  `;
+  const cleanQuery = (query || '').trim().toLowerCase().replace(/^@/, '');
 
   let matchedUsers = [];
   const myId = state.currentUser ? state.currentUser.id : '';
@@ -1600,7 +1718,7 @@ async function searchUsersInDatabase(query) {
       if (u.id !== myId && (u.email || '').toLowerCase() !== myEmail) {
         const uName = (u.username || '').toLowerCase();
         const uEmail = (u.email || '').toLowerCase();
-        if (uName.includes(cleanQuery) || uEmail.includes(cleanQuery)) {
+        if (!cleanQuery || uName.includes(cleanQuery) || uEmail.includes(cleanQuery)) {
           matchedUsers.push({
             id: u.id,
             username: u.username,
@@ -1618,11 +1736,14 @@ async function searchUsersInDatabase(query) {
   // 2. Search in Supabase Cloud Database (crochit_users)
   if (state.supabaseClient) {
     try {
-      const { data: cloudUsers } = await state.supabaseClient
+      let queryBuilder = state.supabaseClient
         .from('crochit_users')
-        .select('id, username, email, avatar, bio')
-        .or(`username.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%`)
-        .limit(10);
+        .select('id, username, email, avatar, bio');
+
+      if (cleanQuery) {
+        queryBuilder = queryBuilder.or(`username.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%`);
+      }
+      const { data: cloudUsers } = await queryBuilder.limit(40);
 
       if (cloudUsers && cloudUsers.length > 0) {
         cloudUsers.forEach(cu => {
@@ -1652,7 +1773,7 @@ async function searchUsersInDatabase(query) {
         <i data-lucide="user-x" class="w-7 h-7 mx-auto text-gray-500"></i>
         <h4 class="text-xs font-bold text-white">No user found matching "${escapeHtml(cleanQuery)}"</h4>
         <p class="text-[11px] text-gray-400 leading-relaxed max-w-xs mx-auto">
-          Make sure the username is spelled correctly, or invite them to register an account on Crochit.
+          Make sure the username is spelled correctly (check underscores or numbers).
         </p>
       </div>
     `;
@@ -1660,35 +1781,51 @@ async function searchUsersInDatabase(query) {
     return;
   }
 
-  // Render matched users
-  let html = `<div class="space-y-2">`;
+  // Render matched users (Instagram style)
+  let html = `
+    <div class="flex items-center justify-between px-1 mb-2 text-[10px] text-gray-400 font-semibold">
+      <span>${cleanQuery ? 'SEARCH RESULTS' : 'EXPLORE REGISTERED USERS'}</span>
+      <span class="text-emerald-400 font-mono">${matchedUsers.length} user${matchedUsers.length > 1 ? 's' : ''}</span>
+    </div>
+    <div class="space-y-2">
+  `;
+
   matchedUsers.forEach(u => {
     const sharedChatId = getDirectChatId(myId, u.id);
     const isExistingChat = state.chatsList.some(c => c.id === sharedChatId || c.otherUserId === u.id);
 
     html += `
-      <div class="p-3 rounded-xl bg-[#16222a] border border-white/5 hover:border-emerald-500/30 transition flex items-center justify-between gap-3">
+      <div class="p-3 rounded-2xl bg-[#16222a] border border-white/5 hover:border-emerald-500/40 transition flex items-center justify-between gap-3 shadow">
         <div class="flex items-center gap-3 min-w-0">
           <div class="relative shrink-0">
-            <img src="${u.avatar}" class="w-10 h-10 rounded-full object-cover border border-purple-500/40" alt="${escapeHtml(u.username)}" />
+            <img src="${u.avatar}" class="w-10 h-10 rounded-full object-cover border border-emerald-500/50" alt="${escapeHtml(u.username)}" />
             <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#111b21]"></span>
           </div>
           <div class="min-w-0">
             <div class="flex items-center gap-1.5">
-              <h5 class="text-xs font-bold text-white truncate">${escapeHtml(u.username)}</h5>
-              <span class="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-400 text-[9px] font-mono rounded">Active</span>
+              <span class="text-xs font-bold text-white font-mono truncate">@${escapeHtml(u.username)}</span>
+              <span class="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 text-[9px] font-mono rounded-full border border-emerald-500/30">Verified</span>
             </div>
-            <p class="text-[10px] text-gray-400 truncate">${escapeHtml(u.email || u.bio || 'Crochit Member')}</p>
+            <p class="text-[10px] text-gray-400 truncate">${escapeHtml(u.bio || 'Available on Crochit')}</p>
           </div>
         </div>
 
-        <button 
-          onclick="startDirectChatWithUser('${u.id}', '${escapeAttr(u.username)}', '${escapeAttr(u.avatar)}')"
-          class="shrink-0 px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition flex items-center gap-1.5 shadow shadow-emerald-500/20"
-        >
-          <i data-lucide="${isExistingChat ? 'message-square' : 'user-plus'}" class="w-3.5 h-3.5"></i>
-          <span>${isExistingChat ? 'Open' : 'Chat'}</span>
-        </button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button 
+            onclick="startDirectChatWithUser('${u.id}', '${escapeAttr(u.username)}', '${escapeAttr(u.avatar)}')"
+            class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition flex items-center gap-1 shadow shadow-emerald-500/20"
+          >
+            <i data-lucide="${isExistingChat ? 'message-square' : 'user-plus'}" class="w-3.5 h-3.5"></i>
+            <span>${isExistingChat ? 'Open' : 'Chat'}</span>
+          </button>
+          <button 
+            onclick="startDirectChatWithUser('${u.id}', '${escapeAttr(u.username)}', '${escapeAttr(u.avatar)}'); startVoiceCall();"
+            class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-emerald-400 hover:text-white transition"
+            title="Encrypted Voice Call"
+          >
+            <i data-lucide="phone" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
       </div>
     `;
   });
@@ -2013,17 +2150,17 @@ function endVoiceCall() {
   const modal = document.getElementById('voice-call-modal');
   if (modal) modal.classList.add('hidden');
 
-  // Reserve session for 20 minutes so user can 1-tap resume/redial!
+  // Reserve session for 10 minutes so user can 1-tap resume/redial!
   const chat = state.chatsList.find(c => c.id === state.activeChatId) || state.reservedCallContact;
   if (chat) {
     state.reservedCallContact = chat;
     if (!state.emergencyGraceTimer) {
-      state.emergencyGraceSeconds = 1200; // 20 minutes
+      state.emergencyGraceSeconds = 600; // 10 minutes minimum
     }
     try {
       localStorage.setItem(DB_RESERVED_CALL_KEY, JSON.stringify({
         contact: chat,
-        expiresAt: Date.now() + (state.emergencyGraceSeconds > 0 ? state.emergencyGraceSeconds : 1200) * 1000
+        expiresAt: Date.now() + (state.emergencyGraceSeconds > 0 ? state.emergencyGraceSeconds : 600) * 1000
       }));
     } catch (e) {}
 
@@ -2102,7 +2239,7 @@ function triggerCallOfflineGraceMode(isSimulated = false) {
     try {
       localStorage.setItem(DB_RESERVED_CALL_KEY, JSON.stringify({
         contact: chat,
-        expiresAt: Date.now() + 1200 * 1000
+        expiresAt: Date.now() + 600 * 1000
       }));
     } catch (e) {}
   }
@@ -2114,18 +2251,23 @@ function triggerCallOfflineGraceMode(isSimulated = false) {
   if (status) {
     status.innerHTML = `
       <div class="space-y-1.5">
-        <span class="text-amber-400 font-bold animate-pulse text-xs block">⚠️ Internet Disconnected — 20m Grace Active</span>
+        <span class="text-amber-400 font-bold animate-pulse text-xs block">⚠️ Wi-Fi / Light Outage — 0 KB Emergency Call Active (10-Min Hold)</span>
         <button onclick="openEmergencyFlashModal()" class="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold shadow-lg shadow-red-600/40 animate-bounce inline-flex items-center gap-1.5">
           <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-300"></i>
-          <span>Send Instant Message Without Internet</span>
+          <span>Send 0 KB Flash Message (No Phone No.)</span>
         </button>
       </div>
     `;
     if (window.lucide) lucide.createIcons();
   }
 
+  // Automatically start buffering voice locally so user's speech isn't lost during outage
+  if (!state.isRecordingOfflineCapsule) {
+    recordOfflineVoiceCapsule();
+  }
+
   if (!state.emergencyGraceTimer) {
-    state.emergencyGraceSeconds = 1200;
+    state.emergencyGraceSeconds = 600;
   }
   startEmergencyGraceCountdown();
 }
@@ -2140,7 +2282,7 @@ function startEmergencyGraceCountdown() {
       clearInterval(state.emergencyGraceTimer);
       state.emergencyGraceTimer = null;
       dismissReservedCall();
-      alert("⚠️ 20-minute Emergency Call Reservation has expired.");
+      alert("⚠️ 10-minute Emergency Call Reservation has expired.");
       return;
     }
     updateGraceTimerDisplay();
@@ -2164,10 +2306,10 @@ function simulateInternetCutToggle() {
   const label = document.getElementById('simulate-cut-label');
 
   if (state.isCallOfflineSimulated) {
-    if (label) label.textContent = "Restore Internet (End Cut Test)";
+    if (label) label.textContent = "Restore Wi-Fi (End Outage Test)";
     triggerCallOfflineGraceMode(true);
   } else {
-    if (label) label.textContent = "Simulate Internet Cut (Test 20-Min Grace)";
+    if (label) label.textContent = "Simulate Wi-Fi Cut (Test 0 KB 10-Min Emergency)";
     reconnectCallSession();
   }
 }
@@ -2175,7 +2317,7 @@ function simulateInternetCutToggle() {
 function reconnectCallSession() {
   state.isCallOfflineSimulated = false;
   const label = document.getElementById('simulate-cut-label');
-  if (label) label.textContent = "Simulate Internet Cut (Test 20-Min Grace)";
+  if (label) label.textContent = "Simulate Wi-Fi Cut (Test 0 KB 10-Min Emergency)";
 
   const banner = document.getElementById('call-offline-grace-banner');
   if (banner) banner.classList.add('hidden');
@@ -2196,7 +2338,8 @@ function showEmergencyCallTopBar() {
   const topBar = document.getElementById('emergency-call-top-bar');
   const nameEl = document.getElementById('top-bar-contact-name');
   if (topBar && state.reservedCallContact) {
-    if (nameEl) nameEl.textContent = state.reservedCallContact.name;
+    const handle = state.reservedCallContact.username ? `@${state.reservedCallContact.username}` : (state.reservedCallContact.name ? `@${state.reservedCallContact.name.toLowerCase().replace(/\s+/g, '')}` : '@contact');
+    if (nameEl) nameEl.textContent = handle;
     topBar.classList.remove('hidden');
     updateGraceTimerDisplay();
     if (window.lucide) lucide.createIcons();
@@ -2365,7 +2508,7 @@ function playEmergencyOfflineChime() {
   } catch (e) {}
 }
 
-// ==================== EMERGENCY FLASH SOS DISPATCHER (NO-INTERNET CROSS-DISTANCE) ====================
+// ==================== 0 KB EMERGENCY FLASH SOS DISPATCHER (NO PHONE NUMBERS) ====================
 function openEmergencyFlashModal() {
   const target = state.reservedCallContact || state.chatsList.find(c => c.id === state.activeChatId);
   if (!target) {
@@ -2376,20 +2519,17 @@ function openEmergencyFlashModal() {
   const modal = document.getElementById('emergency-flash-modal');
   const avatar = document.getElementById('flash-recipient-avatar');
   const name = document.getElementById('flash-recipient-name');
-  const phoneInput = document.getElementById('flash-recipient-phone');
+  const username = document.getElementById('flash-recipient-username');
   const statusBanner = document.getElementById('flash-status-banner');
   const textInput = document.getElementById('emergency-flash-text');
 
   if (avatar) avatar.src = target.avatar || "assets/logo.png";
   if (name) name.textContent = target.name || "Recipient";
-
-  // Check if contact has saved phone number
-  const savedPhone = localStorage.getItem(`crochit_contact_phone_${target.id}`) || target.phone || '';
-  if (phoneInput) phoneInput.value = savedPhone;
+  if (username) username.textContent = target.username ? `@${target.username}` : (target.name ? `@${target.name.toLowerCase().replace(/\s+/g, '')}` : '@contact');
 
   if (statusBanner) statusBanner.classList.add('hidden');
   if (textInput && !textInput.value) {
-    textInput.value = '🚨 Internet cut ho gaya! Call disconnect ho gayi, please call me on my phone.';
+    textInput.value = '💡 Light chali gayi, Wi-Fi band ho gaya! Call 10-min emergency buffer par active hai.';
   }
 
   if (modal) modal.classList.remove('hidden');
@@ -2409,96 +2549,8 @@ function setFlashPresetMessage(msg) {
   }
 }
 
-function saveRecipientPhoneFromModal() {
-  const target = state.reservedCallContact || state.chatsList.find(c => c.id === state.activeChatId);
-  const phoneInput = document.getElementById('flash-recipient-phone');
-  if (!target || !phoneInput) return;
-
-  const phone = phoneInput.value.trim();
-  if (phone) {
-    target.phone = phone;
-    localStorage.setItem(`crochit_contact_phone_${target.id}`, phone);
-    alert(`✓ Mobile number saved for ${target.name} for instant zero-internet GSM dispatch.`);
-  } else {
-    alert("Please enter a valid mobile number.");
-  }
-}
-
-// ROUTE 1: Cellular GSM SMS (100% Zero Internet, Anywhere in the World)
-function dispatchEmergencyGsmSms() {
-  const target = state.reservedCallContact || state.chatsList.find(c => c.id === state.activeChatId);
-  if (!target) {
-    alert("No active contact found.");
-    return;
-  }
-
-  const textInput = document.getElementById('emergency-flash-text');
-  const text = (textInput ? textInput.value : '').trim();
-  if (!text) {
-    alert("Please type or select an emergency message to send.");
-    return;
-  }
-
-  const phoneInput = document.getElementById('flash-recipient-phone');
-  let phone = (phoneInput ? phoneInput.value : '').trim();
-  if (!phone) {
-    phone = localStorage.getItem(`crochit_contact_phone_${target.id}`) || target.phone || '';
-  }
-
-  if (!phone) {
-    const entered = prompt(`Enter ${target.name}'s mobile number to send offline GSM SMS (Works with 0 internet data across any distance):`);
-    if (!entered || !entered.trim()) {
-      alert("Mobile number is required for GSM cellular dispatch without internet.");
-      return;
-    }
-    phone = entered.trim();
-    if (phoneInput) phoneInput.value = phone;
-    target.phone = phone;
-    localStorage.setItem(`crochit_contact_phone_${target.id}`, phone);
-  }
-
-  // Record into target chat messages locally
-  const sosMsg = {
-    id: 'sos_sms_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-    chat_id: target.id,
-    sender: 'me',
-    sender_id: state.currentUser ? state.currentUser.id : 'usr',
-    sender_name: state.currentUser ? state.currentUser.username : 'User',
-    receiver_id: target.otherUserId || '',
-    time: getCurrentTimeFormatted(),
-    text: `🚨 [Offline GSM SMS Dispatched]: ${text}`,
-    isEmergencySos: true,
-    created_at: new Date().toISOString(),
-    status: 'delivered'
-  };
-
-  if (!target.messages) target.messages = [];
-  target.messages.push(sosMsg);
-  saveUserConversations();
-  renderActiveChatMessages();
-
-  // Show status banner
-  const statusBanner = document.getElementById('flash-status-banner');
-  if (statusBanner) {
-    statusBanner.innerHTML = `✓ Dispatched via Cellular GSM SMS to <span class="font-mono font-bold">${escapeHtml(phone)}</span>! Reaches anywhere with 0 internet.`;
-    statusBanner.classList.remove('hidden');
-  }
-
-  playCallTone();
-
-  // Trigger native GSM SMS dispatch URL (works without mobile data / internet)
-  const encodedText = encodeURIComponent(`🚨 [Crochit Emergency Alert from ${state.currentUser ? state.currentUser.username : 'Friend'}]: ${text}`);
-  const cleanPhone = phone.replace(/[^0-9+]/g, '');
-  const smsUri = `sms:${cleanPhone}?body=${encodedText}`;
-
-  // Launch device SMS handler
-  setTimeout(() => {
-    window.location.href = smsUri;
-  }, 400);
-}
-
-// ROUTE 2: Zero-Data Micro-Burst Pulse (Ultra-compressed 40-byte payload)
-async function dispatchZeroDataMicroBurst() {
+// 0 KB In-App Emergency Flash (Dispatches directly inside Crochit to @username without phone numbers)
+async function dispatchZeroDataInAppFlash() {
   const target = state.reservedCallContact || state.chatsList.find(c => c.id === state.activeChatId);
   if (!target) return;
 
@@ -2509,7 +2561,26 @@ async function dispatchZeroDataMicroBurst() {
     return;
   }
 
-  // 1. BroadcastChannel local mesh
+  const sosMsg = {
+    id: 'sos_flash_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+    chat_id: target.id,
+    sender: 'me',
+    sender_id: state.currentUser ? state.currentUser.id : 'usr',
+    sender_name: state.currentUser ? state.currentUser.username : 'User',
+    receiver_id: target.otherUserId || '',
+    time: getCurrentTimeFormatted(),
+    text: `⚡ [0 KB Emergency Flash]: ${text}`,
+    isEmergencySos: true,
+    created_at: new Date().toISOString(),
+    status: 'pending_reconnect'
+  };
+
+  if (!target.messages) target.messages = [];
+  target.messages.push(sosMsg);
+  saveUserConversations();
+  renderActiveChatMessages();
+
+  // 1. BroadcastChannel local mesh (instant if tabs/devices on same browser/network)
   if (typeof BroadcastChannel !== 'undefined') {
     try {
       if (!window.crochitChannel) {
@@ -2518,78 +2589,40 @@ async function dispatchZeroDataMicroBurst() {
       window.crochitChannel.postMessage({
         type: 'INCOMING_MESSAGE',
         payload: {
-          id: 'mb_' + Date.now(),
+          id: sosMsg.id,
           chat_id: target.id,
           sender: 'them',
           sender_id: state.currentUser ? state.currentUser.id : 'usr',
           sender_name: state.currentUser ? state.currentUser.username : 'User',
           receiver_id: target.otherUserId || '',
-          text: `⚡ [Emergency Micro-Burst]: ${text}`,
-          time: getCurrentTimeFormatted(),
-          created_at: new Date().toISOString()
+          text: sosMsg.text,
+          time: sosMsg.time,
+          created_at: sosMsg.created_at
         }
       });
     } catch (e) {}
   }
 
-  // 2. Queue into offline outbox for automatic burst penetration
-  const newMsg = {
-    id: 'mb_' + Date.now(),
-    chat_id: target.id,
-    sender: 'me',
-    sender_id: state.currentUser ? state.currentUser.id : 'usr',
-    sender_name: state.currentUser ? state.currentUser.username : 'User',
-    receiver_id: target.otherUserId || '',
-    time: getCurrentTimeFormatted(),
-    text: `⚡ [Emergency Micro-Burst]: ${text}`,
-    isMicroBurst: true,
-    created_at: new Date().toISOString(),
-    status: 'pending_reconnect'
-  };
-
-  if (!target.messages) target.messages = [];
-  target.messages.push(newMsg);
-  saveUserConversations();
-  renderActiveChatMessages();
-
+  // 2. Queue into 0 KB Outbox (will auto-deliver as soon as Wi-Fi/power restores)
   try {
     const raw = localStorage.getItem(DB_OFFLINE_OUTBOX_KEY) || '[]';
     let outbox = JSON.parse(raw);
-    outbox.push({ contact: target, message: newMsg });
+    outbox.push({ contact: target, message: sosMsg });
     localStorage.setItem(DB_OFFLINE_OUTBOX_KEY, JSON.stringify(outbox));
   } catch (e) {}
 
   const statusBanner = document.getElementById('flash-status-banner');
   if (statusBanner) {
-    statusBanner.innerHTML = `✓ 40-Byte Micro-Burst pulsed! Queued through carrier beacon buffer.`;
+    statusBanner.innerHTML = `✓ 0 KB Flash saved to emergency buffer for <b>@${escapeHtml(target.username || target.name || 'contact')}</b>! It will auto-deliver immediately when connection restores.`;
     statusBanner.classList.remove('hidden');
   }
 
-  playEmergencyOfflineChime();
+  playCallTone();
 }
 
-// ROUTE 3: Direct GSM Cellular Call (tel:)
-function dispatchDirectGsmCall() {
-  const target = state.reservedCallContact || state.chatsList.find(c => c.id === state.activeChatId);
-  if (!target) return;
-
-  const phoneInput = document.getElementById('flash-recipient-phone');
-  let phone = (phoneInput ? phoneInput.value : '').trim();
-  if (!phone) {
-    phone = localStorage.getItem(`crochit_contact_phone_${target.id}`) || target.phone || '';
-  }
-
-  if (!phone) {
-    const entered = prompt(`Enter ${target.name}'s mobile number to switch to regular phone call:`);
-    if (!entered || !entered.trim()) return;
-    phone = entered.trim();
-    if (phoneInput) phoneInput.value = phone;
-    target.phone = phone;
-    localStorage.setItem(`crochit_contact_phone_${target.id}`, phone);
-  }
-
-  const cleanPhone = phone.replace(/[^0-9+]/g, '');
-  window.location.href = `tel:${cleanPhone}`;
+// 0 KB Local Hotspot / LAN Direct Connect
+function triggerLocalHotspotConnect() {
+  alert("📶 0 KB Local Hotspot / LAN Connect:\n\nIf you or your friend are nearby (in the colony or same building):\n1. Turn on phone Portable Hotspot (even with 0 recharge / 0 internet pack).\n2. Have your friend connect to this Wi-Fi.\n3. Crochit connects direct WebRTC audio over local IP with 0 KB internet data required!");
 }
 
 // Global browser window bindings
@@ -2605,10 +2638,10 @@ window.recordOfflineVoiceCapsule = recordOfflineVoiceCapsule;
 window.openEmergencyFlashModal = openEmergencyFlashModal;
 window.closeEmergencyFlashModal = closeEmergencyFlashModal;
 window.setFlashPresetMessage = setFlashPresetMessage;
-window.saveRecipientPhoneFromModal = saveRecipientPhoneFromModal;
-window.dispatchEmergencyGsmSms = dispatchEmergencyGsmSms;
-window.dispatchZeroDataMicroBurst = dispatchZeroDataMicroBurst;
-window.dispatchDirectGsmCall = dispatchDirectGsmCall;
+window.dispatchZeroDataInAppFlash = dispatchZeroDataInAppFlash;
+window.triggerLocalHotspotConnect = triggerLocalHotspotConnect;
+window.handleUsernameInput = handleUsernameInput;
+window.applyUsernameSuggestion = applyUsernameSuggestion;
 
 // ==================== 4. INTERACTIVE VIDEO CALL ====================
 async function startVideoCall() {
