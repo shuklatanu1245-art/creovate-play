@@ -418,16 +418,18 @@ function renderProfileHeader() {
   const modalAvatar = document.getElementById('modal-profile-avatar');
   const modalName = document.getElementById('modal-profile-name');
   const modalEmail = document.getElementById('modal-profile-email');
+  const modalId = document.getElementById('modal-profile-id');
   const editUsernameInput = document.getElementById('edit-username-input');
 
   if (state.currentUser) {
     const avatarUrl = state.currentUser.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80";
     if (headerAvatar) headerAvatar.src = avatarUrl;
     if (headerUsername) headerUsername.textContent = state.currentUser.username || 'User';
-    if (bottomLabel) bottomLabel.textContent = `${state.currentUser.username} (${state.currentUser.email || 'Online'})`;
+    if (bottomLabel) bottomLabel.textContent = `@${state.currentUser.username} (ID: ${state.currentUser.id})`;
     if (modalAvatar) modalAvatar.src = avatarUrl;
     if (modalName) modalName.textContent = state.currentUser.username || 'User';
     if (modalEmail) modalEmail.textContent = state.currentUser.email || '';
+    if (modalId) modalId.textContent = state.currentUser.id || 'N/A';
     if (editUsernameInput) editUsernameInput.value = state.currentUser.username || '';
   } else {
     if (headerAvatar) headerAvatar.src = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80";
@@ -435,6 +437,7 @@ function renderProfileHeader() {
     if (bottomLabel) bottomLabel.textContent = "Not logged in";
     if (modalName) modalName.textContent = "Guest";
     if (modalEmail) modalEmail.textContent = "";
+    if (modalId) modalId.textContent = "Not logged in";
     if (editUsernameInput) editUsernameInput.value = "";
   }
 }
@@ -536,6 +539,14 @@ function toggleAuthMode(mode) {
   if (userInput) userInput.required = !isSignIn;
   if (title) title.textContent = isSignIn ? "Sign In to Crochit" : "Create Your Crochit Account";
   if (submitBtn) submitBtn.textContent = isSignIn ? "Sign In" : "Create Account";
+
+  const emailInput = document.getElementById('auth-email-input');
+  const emailLabel = emailInput ? emailInput.previousElementSibling : null;
+  if (emailLabel) emailLabel.textContent = isSignIn ? "Username or Email Address:" : "Email Address:";
+  if (emailInput) {
+    emailInput.type = isSignIn ? "text" : "email";
+    emailInput.placeholder = isSignIn ? "username (e.g. dev_01) or email" : "you@example.com";
+  }
 }
 
 // ==================== INSTAGRAM-STYLE UNIQUE USERNAME ENGINE ====================
@@ -768,8 +779,12 @@ async function handleAuthSubmit(event) {
     alert(`Account created successfully! Welcome, ${newUser.username}`);
 
   } else {
-    // 2. Sign In Mode
-    let foundUser = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
+    // 2. Sign In Mode (Accepts either Username or Email)
+    const cleanAuthIdentifier = email.trim().toLowerCase().replace(/^@/, '');
+    let foundUser = users.find(u => 
+      (((u.email || '').toLowerCase() === cleanAuthIdentifier) || ((u.username || '').toLowerCase() === cleanAuthIdentifier)) && 
+      u.password === password
+    );
 
     // If not in local storage and Supabase is configured, check cloud DB
     if (!foundUser && state.supabaseClient) {
@@ -777,7 +792,7 @@ async function handleAuthSubmit(event) {
         const { data, error } = await state.supabaseClient
           .from('crochit_users')
           .select('*')
-          .eq('email', email)
+          .or(`email.ilike.${cleanAuthIdentifier},username.ilike.${cleanAuthIdentifier}`)
           .eq('password', password)
           .maybeSingle();
 
@@ -792,7 +807,7 @@ async function handleAuthSubmit(event) {
     }
 
     if (!foundUser) {
-      alert("Invalid email or password. Please check your credentials.");
+      alert("Invalid username/email or password. Please check your credentials.");
       return;
     }
 
@@ -847,16 +862,20 @@ function closeAuthModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-function openNewChatModal() {
+function openNewChatModal(initialQuery = '') {
   const modal = document.getElementById('new-chat-modal');
   if (modal) modal.classList.remove('hidden');
   toggleNewChatTab('direct');
   const searchInput = document.getElementById('search-user-input');
+  const q = typeof initialQuery === 'string' ? initialQuery : '';
   if (searchInput) {
-    searchInput.value = '';
-    setTimeout(() => searchInput.focus(), 100);
+    searchInput.value = q;
+    setTimeout(() => {
+      searchInput.focus();
+      if (q) searchInput.setSelectionRange(q.length, q.length);
+    }, 100);
   }
-  searchUsersInDatabase('');
+  searchUsersInDatabase(q);
 }
 
 function closeNewChatModal() {
@@ -865,12 +884,7 @@ function closeNewChatModal() {
 }
 
 function openSearchWithQuery(q) {
-  openNewChatModal();
-  const searchInput = document.getElementById('search-user-input');
-  if (searchInput) {
-    searchInput.value = q;
-  }
-  searchUsersInDatabase(q);
+  openNewChatModal(q);
 }
 
 // ==================== 2. CHAT & MESSAGING ENGINE ====================
@@ -879,7 +893,8 @@ function renderConversationsList() {
   const countBadge = document.getElementById('chats-count-badge');
   if (!container) return;
 
-  const query = state.searchQuery.toLowerCase();
+  const rawQuery = (state.searchQuery || '').trim();
+  const query = rawQuery.toLowerCase();
   const filtered = state.chatsList.filter(c => {
     return c.name.toLowerCase().includes(query) ||
       (c.messages && c.messages.some(m => m.text && m.text.toLowerCase().includes(query)));
@@ -888,14 +903,14 @@ function renderConversationsList() {
   if (countBadge) countBadge.textContent = filtered.length;
 
   if (filtered.length === 0) {
-    const isSearching = !!query;
+    const isSearching = !!rawQuery;
     container.innerHTML = `
       <div class="p-6 text-center text-gray-400 space-y-3">
-        <i data-lucide="${isSearching ? 'user-check' : 'message-square'}" class="w-8 h-8 mx-auto text-gray-500"></i>
-        <p class="text-xs text-gray-300">${isSearching ? `No existing chat found matching "${escapeHtml(query)}"` : 'No conversations yet.'}</p>
-        <button onclick="${isSearching ? `openSearchWithQuery('${escapeAttr(query)}')` : 'openNewChatModal()'}" class="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 text-xs font-bold transition flex items-center gap-1.5 mx-auto shadow-sm">
+        <i data-lucide="${isSearching ? 'database' : 'message-square'}" class="w-8 h-8 mx-auto text-emerald-400"></i>
+        <p class="text-xs text-gray-300 font-medium">${isSearching ? `No active conversation found for "${escapeHtml(rawQuery)}"` : 'No conversations yet.'}</p>
+        <button onclick="${isSearching ? `openSearchWithQuery('${escapeAttr(rawQuery)}')` : 'openNewChatModal()'}" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition flex items-center gap-1.5 mx-auto shadow-md shadow-emerald-500/20">
           <i data-lucide="search" class="w-3.5 h-3.5"></i>
-          <span>${isSearching ? `Search User Database for "${escapeHtml(query)}"` : '+ Start a new chat'}</span>
+          <span>${isSearching ? `Search User Database for "${escapeHtml(rawQuery)}"` : '+ Start a new chat'}</span>
         </button>
       </div>
     `;
@@ -904,6 +919,21 @@ function renderConversationsList() {
   }
 
   let html = '';
+
+  // If user is searching and chats exist, also display a top shortcut banner to search global user database
+  if (rawQuery) {
+    html += `
+      <div class="p-2 border-b border-white/5 bg-[#16222a]/50">
+        <button onclick="openSearchWithQuery('${escapeAttr(rawQuery)}')" class="w-full py-2 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center justify-between transition">
+          <span class="flex items-center gap-1.5 truncate">
+            <i data-lucide="database" class="w-3.5 h-3.5 shrink-0"></i>
+            <span class="truncate">Search Database for "${escapeHtml(rawQuery)}"</span>
+          </span>
+          <i data-lucide="arrow-right" class="w-3.5 h-3.5 shrink-0"></i>
+        </button>
+      </div>
+    `;
+  }
   filtered.forEach(chat => {
     const isActive = chat.id === state.activeChatId;
     const lastMsg = (chat.messages && chat.messages.length > 0)
@@ -1700,40 +1730,81 @@ function handleUserSearchInput(query) {
 }
 
 // ==================== INSTAGRAM-STYLE USER EXPLORE & SEARCH DIRECTORY ====================
-// Lists registered users with unique @username badges and filters live in real time.
+// Searches registered users by exact @username, ID, or partial name/email from local storage and Supabase cloud DB.
+// Always returns the user card with their exact Username AND their exact Database User ID!
 async function searchUsersInDatabase(query) {
   const container = document.getElementById('search-user-results');
   if (!container) return;
 
-  const cleanQuery = (query || '').trim().toLowerCase().replace(/^@/, '');
+  const rawQuery = (query || '').trim();
+  const cleanQuery = rawQuery.toLowerCase().replace(/^@/, '');
+
+  const myId = state.currentUser ? String(state.currentUser.id || '') : '';
+  const myEmail = state.currentUser ? (state.currentUser.email || '').toLowerCase() : '';
+
+  // Show live feedback while querying database
+  if (cleanQuery) {
+    container.innerHTML = `
+      <div class="p-5 text-center text-gray-400 space-y-2 rounded-xl bg-white/[0.02] border border-white/5">
+        <div class="inline-block animate-spin rounded-full h-5 w-5 border-2 border-emerald-400 border-t-transparent"></div>
+        <p class="text-xs text-emerald-400 font-mono">Searching database for "${escapeHtml(rawQuery)}"...</p>
+      </div>
+    `;
+  }
 
   let matchedUsers = [];
-  const myId = state.currentUser ? state.currentUser.id : '';
-  const myEmail = state.currentUser ? (state.currentUser.email || '').toLowerCase() : '';
+  const seenIds = new Set();
+
+  function addUserResult(u, fromCloud = false) {
+    if (!u || !u.id) return;
+    const uid = String(u.id);
+    if (seenIds.has(uid)) return;
+    seenIds.add(uid);
+
+    const uname = (u.username || u.name || 'User').replace(/^@/, '');
+    const uemail = u.email || '';
+    const isSelf = (uid === myId) || (myEmail && uemail.toLowerCase() === myEmail);
+    const isExact = cleanQuery && (uname.toLowerCase() === cleanQuery || uid.toLowerCase() === cleanQuery || uemail.toLowerCase() === cleanQuery);
+
+    matchedUsers.push({
+      id: uid,
+      username: uname,
+      email: uemail,
+      avatar: u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+      bio: u.bio || "Available on Crochit",
+      isSelf: isSelf,
+      isExact: isExact,
+      fromCloud: fromCloud
+    });
+  }
 
   // 1. Search in local registered users (localStorage)
   try {
     const localUsers = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
     localUsers.forEach(u => {
-      if (u.id !== myId && (u.email || '').toLowerCase() !== myEmail) {
-        const uName = (u.username || '').toLowerCase();
-        const uEmail = (u.email || '').toLowerCase();
-        if (!cleanQuery || uName.includes(cleanQuery) || uEmail.includes(cleanQuery)) {
-          matchedUsers.push({
-            id: u.id,
-            username: u.username,
-            email: u.email,
-            avatar: u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
-            bio: u.bio || "Available on Crochit"
-          });
-        }
+      const uName = (u.username || '').toLowerCase().replace(/^@/, '');
+      const uId = String(u.id || '').toLowerCase();
+      const uEmail = (u.email || '').toLowerCase();
+
+      if (!cleanQuery || uName.includes(cleanQuery) || uId.includes(cleanQuery) || uEmail.includes(cleanQuery)) {
+        addUserResult(u, false);
       }
     });
   } catch (e) {
     console.warn("Local user search notice:", e);
   }
 
+  // Also include current user in search results if matched (so they can verify their own ID/username)
+  if (state.currentUser) {
+    const myName = (state.currentUser.username || '').toLowerCase().replace(/^@/, '');
+    const myIdLower = String(state.currentUser.id || '').toLowerCase();
+    if (!cleanQuery || myName.includes(cleanQuery) || myIdLower.includes(cleanQuery) || myEmail.includes(cleanQuery)) {
+      addUserResult(state.currentUser, false);
+    }
+  }
+
   // 2. Search in Supabase Cloud Database (crochit_users)
+  let cloudFetchedUsers = [];
   if (state.supabaseClient) {
     try {
       let queryBuilder = state.supabaseClient
@@ -1741,39 +1812,84 @@ async function searchUsersInDatabase(query) {
         .select('id, username, email, avatar, bio');
 
       if (cleanQuery) {
-        queryBuilder = queryBuilder.or(`username.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%`);
+        queryBuilder = queryBuilder.or(`username.ilike.%${cleanQuery}%,id.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%`);
       }
-      const { data: cloudUsers } = await queryBuilder.limit(40);
-
-      if (cloudUsers && cloudUsers.length > 0) {
-        cloudUsers.forEach(cu => {
-          if (cu.id !== myId && (cu.email || '').toLowerCase() !== myEmail) {
-            const alreadyInList = matchedUsers.some(mu => mu.id === cu.id || mu.username.toLowerCase() === cu.username.toLowerCase());
-            if (!alreadyInList) {
-              matchedUsers.push({
-                id: cu.id,
-                username: cu.username,
-                email: cu.email,
-                avatar: cu.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
-                bio: cu.bio || "Available on Crochit"
-              });
-            }
-          }
-        });
+      const { data, error } = await queryBuilder.limit(40);
+      if (data && data.length > 0) {
+        cloudFetchedUsers = data;
       }
     } catch (e) {
-      console.warn("Cloud user search notice:", e);
+      console.warn("Cloud user search SDK notice:", e);
     }
   }
+
+  // Direct REST API fallback if cloud query didn't return or SDK failed
+  if (cloudFetchedUsers.length === 0 && CROCHIT_CONFIG.supabaseUrl && CROCHIT_CONFIG.supabaseAnonKey) {
+    try {
+      const restEndpoint = cleanQuery
+        ? `${CROCHIT_CONFIG.supabaseUrl}/rest/v1/crochit_users?select=id,username,email,avatar,bio&or=(username.ilike.*${encodeURIComponent(cleanQuery)}*,id.ilike.*${encodeURIComponent(cleanQuery)}*,email.ilike.*${encodeURIComponent(cleanQuery)}*)&limit=40`
+        : `${CROCHIT_CONFIG.supabaseUrl}/rest/v1/crochit_users?select=id,username,email,avatar,bio&limit=25`;
+
+      const resp = await fetch(restEndpoint, {
+        headers: {
+          'apikey': CROCHIT_CONFIG.supabaseAnonKey,
+          'Authorization': `Bearer ${CROCHIT_CONFIG.supabaseAnonKey}`
+        }
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        if (Array.isArray(json) && json.length > 0) {
+          cloudFetchedUsers = json;
+        }
+      }
+    } catch (restErr) {
+      console.warn("REST direct fetch notice:", restErr);
+    }
+  }
+
+  // Merge cloud users and save into local cache
+  if (cloudFetchedUsers.length > 0) {
+    try {
+      const localUsers = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
+      let updatedLocal = false;
+      cloudFetchedUsers.forEach(cu => {
+        addUserResult(cu, true);
+        if (!localUsers.some(lu => lu.id === cu.id)) {
+          localUsers.push(cu);
+          updatedLocal = true;
+        }
+      });
+      if (updatedLocal) {
+        localStorage.setItem(DB_USERS_KEY, JSON.stringify(localUsers));
+      }
+    } catch (syncErr) {
+      console.warn("User caching error:", syncErr);
+    }
+  }
+
+  // Sort: Exact matches first, then startsWith, then others
+  matchedUsers.sort((a, b) => {
+    if (a.isExact && !b.isExact) return -1;
+    if (!a.isExact && b.isExact) return 1;
+
+    const aName = a.username.toLowerCase();
+    const bName = b.username.toLowerCase();
+    const aStarts = cleanQuery && aName.startsWith(cleanQuery);
+    const bStarts = cleanQuery && bName.startsWith(cleanQuery);
+    if (aStarts && !bStarts) return -1;
+    if (!aStarts && bStarts) return 1;
+
+    return 0;
+  });
 
   // If no users matched
   if (matchedUsers.length === 0) {
     container.innerHTML = `
-      <div class="p-5 text-center text-gray-400 space-y-2 rounded-xl bg-white/[0.02] border border-white/5">
-        <i data-lucide="user-x" class="w-7 h-7 mx-auto text-gray-500"></i>
-        <h4 class="text-xs font-bold text-white">No user found matching "${escapeHtml(cleanQuery)}"</h4>
+      <div class="p-6 text-center text-gray-400 space-y-2 rounded-2xl bg-white/[0.02] border border-white/5">
+        <i data-lucide="user-x" class="w-8 h-8 mx-auto text-gray-500"></i>
+        <h4 class="text-xs font-bold text-white">No user found matching "${escapeHtml(rawQuery)}"</h4>
         <p class="text-[11px] text-gray-400 leading-relaxed max-w-xs mx-auto">
-          Make sure the username is spelled correctly (check underscores or numbers).
+          We checked both local storage and the Supabase cloud database. Verify spelling or check the exact username.
         </p>
       </div>
     `;
@@ -1781,13 +1897,18 @@ async function searchUsersInDatabase(query) {
     return;
   }
 
-  // Render matched users (Instagram style)
+  // Render matched users
   let html = `
-    <div class="flex items-center justify-between px-1 mb-2 text-[10px] text-gray-400 font-semibold">
-      <span>${cleanQuery ? 'SEARCH RESULTS' : 'EXPLORE REGISTERED USERS'}</span>
-      <span class="text-emerald-400 font-mono">${matchedUsers.length} user${matchedUsers.length > 1 ? 's' : ''}</span>
+    <div class="flex items-center justify-between px-1 mb-2.5 text-[10px] text-gray-400 font-semibold">
+      <span class="flex items-center gap-1.5 text-emerald-400 font-bold uppercase tracking-wider">
+        <i data-lucide="database" class="w-3.5 h-3.5"></i>
+        ${cleanQuery ? `DATABASE SEARCH RESULTS FOR "${escapeHtml(rawQuery)}"` : 'REGISTERED USERS DIRECTORY'}
+      </span>
+      <span class="text-emerald-300 font-mono bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+        ${matchedUsers.length} user${matchedUsers.length > 1 ? 's' : ''}
+      </span>
     </div>
-    <div class="space-y-2">
+    <div class="space-y-2.5">
   `;
 
   matchedUsers.forEach(u => {
@@ -1795,36 +1916,59 @@ async function searchUsersInDatabase(query) {
     const isExistingChat = state.chatsList.some(c => c.id === sharedChatId || c.otherUserId === u.id);
 
     html += `
-      <div class="p-3 rounded-2xl bg-[#16222a] border border-white/5 hover:border-emerald-500/40 transition flex items-center justify-between gap-3 shadow">
-        <div class="flex items-center gap-3 min-w-0">
+      <div class="p-3.5 rounded-2xl bg-[#16222a] border ${u.isExact ? 'border-emerald-500/70 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500/30' : 'border-white/5 hover:border-emerald-500/40'} transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-start sm:items-center gap-3 min-w-0 flex-1">
           <div class="relative shrink-0">
-            <img src="${u.avatar}" class="w-10 h-10 rounded-full object-cover border border-emerald-500/50" alt="${escapeHtml(u.username)}" />
-            <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#111b21]"></span>
+            <img src="${u.avatar}" class="w-11 h-11 rounded-full object-cover border-2 ${u.isExact ? 'border-emerald-400' : 'border-emerald-500/40'}" alt="${escapeHtml(u.username)}" />
+            <span class="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#111b21]"></span>
           </div>
-          <div class="min-w-0">
-            <div class="flex items-center gap-1.5">
-              <span class="text-xs font-bold text-white font-mono truncate">@${escapeHtml(u.username)}</span>
+
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-xs font-bold text-white font-mono">@${escapeHtml(u.username)}</span>
+              ${u.isExact ? `<span class="px-1.5 py-0.2 bg-emerald-500 text-black text-[9px] font-black rounded uppercase tracking-wider">Exact Match</span>` : ''}
+              ${u.isSelf ? `<span class="px-1.5 py-0.2 bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[9px] font-bold rounded">You</span>` : ''}
               <span class="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 text-[9px] font-mono rounded-full border border-emerald-500/30">Verified</span>
             </div>
-            <p class="text-[10px] text-gray-400 truncate">${escapeHtml(u.bio || 'Available on Crochit')}</p>
+
+            <!-- PROMINENT USER DATABASE ID DISPLAY -->
+            <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+              <div class="inline-flex items-center gap-1 px-2 py-0.5 bg-[#0b141a] border border-emerald-500/35 rounded-md text-[11px] font-mono text-emerald-300">
+                <span class="text-[9px] uppercase font-sans font-bold text-gray-400">User ID:</span>
+                <span class="font-bold select-all tracking-wide text-emerald-400">${escapeHtml(u.id)}</span>
+              </div>
+              <button 
+                type="button" 
+                onclick="event.stopPropagation(); copyTextToClipboard('${escapeAttr(u.id)}', 'Copied User ID: ${escapeAttr(u.id)}');" 
+                class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-emerald-500/20 text-gray-400 hover:text-emerald-300 transition text-[10px] flex items-center gap-1 border border-white/5"
+                title="Copy User ID"
+              >
+                <i data-lucide="copy" class="w-3 h-3"></i>
+                <span>Copy</span>
+              </button>
+            </div>
+
+            <p class="text-[10px] text-gray-400 truncate mt-0.5">${escapeHtml(u.bio || 'Available on Crochit')}</p>
           </div>
         </div>
 
-        <div class="flex items-center gap-1.5 shrink-0">
+        <div class="flex items-center gap-2 shrink-0 self-end sm:self-center">
           <button 
             onclick="startDirectChatWithUser('${u.id}', '${escapeAttr(u.username)}', '${escapeAttr(u.avatar)}')"
-            class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition flex items-center gap-1 shadow shadow-emerald-500/20"
+            class="px-3.5 py-2 rounded-xl ${u.isSelf ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-emerald-500 hover:bg-emerald-600 text-black'} text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
           >
-            <i data-lucide="${isExistingChat ? 'message-square' : 'user-plus'}" class="w-3.5 h-3.5"></i>
-            <span>${isExistingChat ? 'Open' : 'Chat'}</span>
+            <i data-lucide="${u.isSelf ? 'bookmark' : (isExistingChat ? 'message-square' : 'user-plus')}" class="w-3.5 h-3.5"></i>
+            <span>${u.isSelf ? 'Self Notes' : (isExistingChat ? 'Open Chat' : 'Chat')}</span>
           </button>
-          <button 
-            onclick="startDirectChatWithUser('${u.id}', '${escapeAttr(u.username)}', '${escapeAttr(u.avatar)}'); startVoiceCall();"
-            class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-emerald-400 hover:text-white transition"
-            title="Encrypted Voice Call"
-          >
-            <i data-lucide="phone" class="w-3.5 h-3.5"></i>
-          </button>
+          ${!u.isSelf ? `
+            <button 
+              onclick="startDirectChatWithUser('${u.id}', '${escapeAttr(u.username)}', '${escapeAttr(u.avatar)}'); startVoiceCall();"
+              class="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-emerald-400 hover:text-white transition"
+              title="Encrypted Voice Call"
+            >
+              <i data-lucide="phone" class="w-3.5 h-3.5"></i>
+            </button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -1839,8 +1983,9 @@ async function searchUsersInDatabase(query) {
 function startDirectChatWithUser(otherUserId, otherUsername, otherAvatar) {
   if (!state.currentUser) return;
 
-  const chatId = getDirectChatId(state.currentUser.id, otherUserId);
-  let existing = state.chatsList.find(c => c.id === chatId || c.otherUserId === otherUserId);
+  const isSelf = String(otherUserId) === String(state.currentUser.id);
+  const chatId = isSelf ? `self_${state.currentUser.id}` : getDirectChatId(state.currentUser.id, otherUserId);
+  let existing = state.chatsList.find(c => c.id === chatId || (!isSelf && c.otherUserId === otherUserId));
 
   if (existing) {
     closeNewChatModal();
@@ -1850,7 +1995,7 @@ function startDirectChatWithUser(otherUserId, otherUsername, otherAvatar) {
 
   const newChat = {
     id: chatId,
-    name: otherUsername,
+    name: isSelf ? `${otherUsername} (Saved Notes)` : otherUsername,
     avatar: otherAvatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
     otherUserId: otherUserId,
     online: true,
@@ -1862,8 +2007,8 @@ function startDirectChatWithUser(otherUserId, otherUsername, otherAvatar) {
   state.chatsList.unshift(newChat);
   saveUserConversations();
 
-  // Also sync contact to other user's list in Supabase so they see current user too
-  if (state.supabaseClient) {
+  // If not self, also sync contact to other user's list in Supabase so they see current user too
+  if (!isSelf && state.supabaseClient) {
     try {
       state.supabaseClient.from('crochit_user_chats').upsert([
         {
@@ -2760,7 +2905,65 @@ function setupEventListeners() {
       state.searchQuery = e.target.value;
       renderConversationsList();
     });
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const q = (e.target.value || '').trim();
+        if (q) {
+          openSearchWithQuery(q);
+        }
+      }
+    });
   }
+}
+
+// ==================== CLIPBOARD & TOAST UTILITIES ====================
+function copyTextToClipboard(text, successMsg) {
+  if (!text) return;
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => {
+      if (successMsg) showSearchCopyToast(successMsg);
+    }).catch(() => {
+      fallbackCopyText(text, successMsg);
+    });
+  } else {
+    fallbackCopyText(text, successMsg);
+  }
+}
+
+function fallbackCopyText(text, successMsg) {
+  try {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    document.execCommand('copy');
+    textArea.remove();
+    if (successMsg) showSearchCopyToast(successMsg);
+  } catch (err) {
+    console.warn("Clipboard copy fallback error:", err);
+  }
+}
+
+function showSearchCopyToast(msg) {
+  let toast = document.getElementById('crochit-copy-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'crochit-copy-toast';
+    toast.className = 'fixed bottom-6 right-6 z-[9999] bg-emerald-500 text-black px-4 py-2.5 rounded-xl font-bold text-xs shadow-2xl flex items-center gap-2 transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-none';
+    document.body.appendChild(toast);
+  }
+  toast.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4"></i><span>${escapeHtml(msg)}</span>`;
+  if (window.lucide) lucide.createIcons();
+  toast.classList.remove('translate-y-2', 'opacity-0');
+  toast.classList.add('translate-y-0', 'opacity-100');
+  setTimeout(() => {
+    toast.classList.remove('translate-y-0', 'opacity-100');
+    toast.classList.add('translate-y-2', 'opacity-0');
+  }, 2200);
 }
 
 // Time Helper

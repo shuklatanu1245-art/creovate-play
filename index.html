@@ -772,6 +772,13 @@
         </div>
         <h3 id="modal-profile-name" class="font-bold text-white text-base">User Name</h3>
         <p id="modal-profile-email" class="text-xs text-gray-400 font-mono">user@example.com</p>
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 bg-[#16222a] border border-emerald-500/30 rounded-xl text-xs font-mono text-emerald-300 mx-auto">
+          <span class="text-gray-400 text-[10px] uppercase font-sans font-bold">Database ID:</span>
+          <span id="modal-profile-id" class="font-bold select-all tracking-wide text-emerald-400">usr_...</span>
+          <button type="button" onclick="copyTextToClipboard(document.getElementById('modal-profile-id').textContent, 'Copied Database ID!')" class="text-gray-400 hover:text-emerald-300 ml-1 p-0.5 transition" title="Copy User ID">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
       </div>
 
       <!-- Edit Form -->
@@ -854,7 +861,7 @@
             id="search-user-input" 
             type="text" 
             oninput="handleUserSearchInput(this.value)"
-            placeholder="Type username (e.g. rohit or tanu)..."
+            placeholder="Type exact username or ID (e.g. dev_01, usr_...)..."
             class="w-full bg-[#202c33] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-emerald-500"
           />
         </div>
