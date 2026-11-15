@@ -23,9 +23,29 @@ CREATE TABLE IF NOT EXISTS crochit_messages (
 );
 
 -- 3. Disable RLS on messages table so client can insert and receive messages
-ALTER TABLE crochit_messages DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS crochit_messages DISABLE ROW LEVEL SECURITY;
 
--- 4. Enable Realtime replication for instant cross-device delivery
+-- 4. Permissive policies in case RLS is turned on:
+DO $$
+BEGIN
+  BEGIN
+    DROP POLICY IF EXISTS "Public access crochit_users" ON crochit_users;
+    CREATE POLICY "Public access crochit_users" ON crochit_users FOR ALL USING (true) WITH CHECK (true);
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+  BEGIN
+    DROP POLICY IF EXISTS "Public access crochit_user_chats" ON crochit_user_chats;
+    CREATE POLICY "Public access crochit_user_chats" ON crochit_user_chats FOR ALL USING (true) WITH CHECK (true);
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+  BEGIN
+    DROP POLICY IF EXISTS "Public access crochit_messages" ON crochit_messages;
+    CREATE POLICY "Public access crochit_messages" ON crochit_messages FOR ALL USING (true) WITH CHECK (true);
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+END $$;
+
+-- 5. Enable Realtime replication for instant cross-device delivery
 ALTER PUBLICATION supabase_realtime ADD TABLE crochit_messages;
 
 -- 5. Indexes for fast user search and message queries

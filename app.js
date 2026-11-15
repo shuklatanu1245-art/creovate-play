@@ -160,27 +160,412 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// ==================== 1. CLOUD DATABASE & AUTH ====================
+// ==================== 1. CLOUD DATABASE & AUTH ADAPTER ====================
+// Bulletproof dual-engine: Supabase JS SDK + Native Browser REST API (fetch)
+// Works seamlessly across different devices, tabs, Chrome profiles, and mobile browsers.
+const CrochitCloudDB = {
+  get url() {
+    return (typeof CROCHIT_CONFIG !== 'undefined' && CROCHIT_CONFIG.supabaseUrl) ? CROCHIT_CONFIG.supabaseUrl : '';
+  },
+  get key() {
+    return (typeof CROCHIT_CONFIG !== 'undefined' && CROCHIT_CONFIG.supabaseAnonKey) ? CROCHIT_CONFIG.supabaseAnonKey : '';
+  },
+  getHeaders(preferRepresentation = true) {
+    const headers = {
+      'apikey': this.key,
+      'Authorization': `Bearer ${this.key}`,
+      'Content-Type': 'application/json'
+    };
+    if (preferRepresentation) {
+      headers['Prefer'] = 'return=representation';
+    }
+    return headers;
+  },
+
+  // 1. Register new user directly into Supabase crochit_users table
+  async insertUser(newUser) {
+    if (!this.url || !this.key) {
+      return { success: false, error: 'Supabase configuration missing' };
+    }
+
+    // Try Supabase JS Client first if initialized
+    if (state.supabaseClient) {
+      try {
+        const { data, error } = await state.supabaseClient
+          .from('crochit_users')
+          .insert([newUser]);
+        if (!error) {
+          console.log("✓ User registered via Supabase Client:", newUser.username);
+          return { success: true, user: newUser };
+        }
+        console.warn("Supabase Client insert notice, trying direct REST:", error);
+      } catch (sdkErr) {
+        console.warn("Supabase Client exception:", sdkErr);
+      }
+    }
+
+    // Direct Native REST API fetch fallback (100% independent of client library)
+    try {
+      const resp = await fetch(`${this.url}/rest/v1/crochit_users`, {
+        method: 'POST',
+        headers: this.getHeaders(true),
+        body: JSON.stringify(newUser)
+      });
+
+      if (resp.ok || resp.status === 201) {
+        console.log("✓ User registered via Direct REST API:", newUser.username);
+        return { success: true, user: newUser };
+      }
+
+      if (resp.status === 409) {
+        return { success: true, user: newUser, alreadyExists: true };
+      }
+
+      const errText = await resp.text();
+      console.error("Direct REST insert error:", resp.status, errText);
+      return { success: false, error: errText };
+    } catch (netErr) {
+      console.error("Direct REST network failure:", netErr);
+      return { success: false, error: netErr.message };
+    }
+  },
+
+  // 2. Search users across both Supabase Cloud Database and local cache
+  async searchUsers(query) {
+    const rawQuery = (query || '').trim();
+    const cleanQuery = rawQuery.toLowerCase().replace(/^@/, '');
+    const results = [];
+    const seenIds = new Set();
+
+    function add(u, fromCloud = true) {
+      if (!u || !u.id) return;
+      const uid = String(u.id);
+      if (seenIds.has(uid)) return;
+      seenIds.add(uid);
+      const uname = (u.username || u.name || 'User').replace(/^@/, '');
+      const uemail = u.email || '';
+      results.push({
+        id: uid,
+        username: uname,
+        email: uemail,
+        avatar: u.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
+        bio: u.bio || "Available on Crochit 🚀",
+        fromCloud
+      });
+    }
+
+    // A. Search local cache
+    try {
+      const localUsers = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
+      localUsers.forEach(u => {
+        if (!u || !u.id) return;
+        const uname = (u.username || '').toLowerCase().replace(/^@/, '');
+        const uid = String(u.id || '').toLowerCase();
+        const uemail = (u.email || '').toLowerCase();
+        if (!cleanQuery || uname.includes(cleanQuery) || uid.includes(cleanQuery) || uemail.includes(cleanQuery)) {
+          add(u, false);
+        }
+      });
+    } catch (e) {}
+
+    // B. Query Supabase Cloud Database
+    if (this.url && this.key) {
+      let cloudUsers = [];
+
+      // Try SDK query first if available
+      if (state.supabaseClient) {
+        try {
+          let qb = state.supabaseClient
+            .from('crochit_users')
+            .select('id, username, email, avatar, bio');
+          if (cleanQuery) {
+            qb = qb.or(`username.ilike.%${cleanQuery}%,id.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%`);
+          }
+          const { data, error } = await qb.limit(50);
+          if (data && data.length > 0) {
+            cloudUsers = data;
+          }
+        } catch (e) {}
+      }
+
+      // If SDK returned 0 or not ready, query direct REST API
+      if (cloudUsers.length === 0) {
+        try {
+          const endpoint = cleanQuery
+            ? `${this.url}/rest/v1/crochit_users?select=id,username,email,avatar,bio&or=(username.ilike.*${encodeURIComponent(cleanQuery)}*,id.ilike.*${encodeURIComponent(cleanQuery)}*,email.ilike.*${encodeURIComponent(cleanQuery)}*)&limit=50`
+            : `${this.url}/rest/v1/crochit_users?select=id,username,email,avatar,bio&order=created_at.desc&limit=30`;
+
+          const resp = await fetch(endpoint, {
+            headers: {
+              'apikey': this.key,
+              'Authorization': `Bearer ${this.key}`
+            }
+          });
+
+          if (resp.ok) {
+            const data = await resp.json();
+            if (Array.isArray(data) && data.length > 0) {
+              cloudUsers = data;
+            }
+          }
+        } catch (fetchErr) {
+          console.warn("Direct REST search notice:", fetchErr);
+        }
+      }
+
+      // Merge cloud users and save into local storage cache
+      if (cloudUsers && cloudUsers.length > 0) {
+        try {
+          const localCache = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
+          let updatedCache = false;
+          cloudUsers.forEach(cu => {
+            add(cu, true);
+            if (!localCache.some(lu => lu.id === cu.id)) {
+              localCache.push(cu);
+              updatedCache = true;
+            }
+          });
+          if (updatedCache) {
+            localStorage.setItem(DB_USERS_KEY, JSON.stringify(localCache));
+          }
+        } catch (e) {}
+      }
+    }
+
+    return results;
+  },
+
+  // 3. Check if username is already taken in the cloud database
+  async checkUsernameTaken(username) {
+    const clean = (username || '').trim().toLowerCase().replace(/^@/, '');
+    if (!clean || !this.url || !this.key) return false;
+
+    if (state.supabaseClient) {
+      try {
+        const { data } = await state.supabaseClient
+          .from('crochit_users')
+          .select('id, username')
+          .ilike('username', clean)
+          .maybeSingle();
+        if (data) return true;
+      } catch (e) {}
+    }
+
+    try {
+      const resp = await fetch(`${this.url}/rest/v1/crochit_users?select=id,username&username=ilike.${encodeURIComponent(clean)}&limit=1`, {
+        headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
+      });
+      if (resp.ok) {
+        const list = await resp.json();
+        return Array.isArray(list) && list.length > 0;
+      }
+    } catch (e) {}
+
+    return false;
+  },
+
+  // 4. Check if email is already taken in the cloud database
+  async checkEmailTaken(email) {
+    const clean = (email || '').trim().toLowerCase();
+    if (!clean || !this.url || !this.key) return false;
+
+    if (state.supabaseClient) {
+      try {
+        const { data } = await state.supabaseClient
+          .from('crochit_users')
+          .select('id')
+          .eq('email', clean)
+          .maybeSingle();
+        if (data) return true;
+      } catch (e) {}
+    }
+
+    try {
+      const resp = await fetch(`${this.url}/rest/v1/crochit_users?select=id&email=eq.${encodeURIComponent(clean)}&limit=1`, {
+        headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
+      });
+      if (resp.ok) {
+        const list = await resp.json();
+        return Array.isArray(list) && list.length > 0;
+      }
+    } catch (e) {}
+
+    return false;
+  },
+
+  // 5. Cloud Sign In (Accepts either username or email)
+  async loginUser(identifier, password) {
+    const clean = (identifier || '').trim().toLowerCase().replace(/^@/, '');
+    if (!this.url || !this.key) return null;
+
+    if (state.supabaseClient) {
+      try {
+        const { data } = await state.supabaseClient
+          .from('crochit_users')
+          .select('*')
+          .or(`email.ilike.${clean},username.ilike.${clean}`)
+          .eq('password', password)
+          .maybeSingle();
+        if (data) return data;
+      } catch (e) {}
+    }
+
+    try {
+      const endpoint = `${this.url}/rest/v1/crochit_users?select=*&or=(email.ilike.${encodeURIComponent(clean)},username.ilike.${encodeURIComponent(clean)})&password=eq.${encodeURIComponent(password)}&limit=1`;
+      const resp = await fetch(endpoint, {
+        headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
+      });
+      if (resp.ok) {
+        const list = await resp.json();
+        if (Array.isArray(list) && list.length > 0) return list[0];
+      }
+    } catch (e) {}
+
+    return null;
+  },
+
+  // 6. Startup Auto-Sync of Current User
+  async syncCurrentUser() {
+    if (!state.currentUser || !this.url || !this.key) return;
+    try {
+      const checkResp = await fetch(`${this.url}/rest/v1/crochit_users?select=id&id=eq.${encodeURIComponent(state.currentUser.id)}&limit=1`, {
+        headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
+      });
+      if (checkResp.ok) {
+        const checkList = await checkResp.json();
+        if (Array.isArray(checkList) && checkList.length === 0) {
+          console.log("⚡ Auto-uploading local account to Supabase Cloud:", state.currentUser.username);
+          await this.insertUser(state.currentUser);
+        }
+      }
+    } catch (e) {
+      console.warn("User auto-sync notice:", e);
+    }
+  },
+
+  // 7. Sync Recipient Contact in Supabase Cloud
+  async syncContact(contact) {
+    if (!this.url || !this.key) return;
+    if (state.supabaseClient) {
+      try {
+        await state.supabaseClient
+          .from('crochit_user_chats')
+          .upsert([contact]);
+        return;
+      } catch (e) {}
+    }
+
+    try {
+      await fetch(`${this.url}/rest/v1/crochit_user_chats`, {
+        method: 'POST',
+        headers: {
+          'apikey': this.key,
+          'Authorization': `Bearer ${this.key}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify(contact)
+      });
+    } catch (e) {}
+  },
+
+  // 8. Send Message to Supabase Cloud
+  async sendMessage(msg) {
+    if (!this.url || !this.key) return;
+    if (state.supabaseClient) {
+      try {
+        const { error } = await state.supabaseClient
+          .from('crochit_messages')
+          .insert([msg]);
+        if (!error) return;
+      } catch (e) {}
+    }
+
+    try {
+      const resp = await fetch(`${this.url}/rest/v1/crochit_messages`, {
+        method: 'POST',
+        headers: this.getHeaders(true),
+        body: JSON.stringify(msg)
+      });
+      if (!resp.ok) {
+        const txt = await resp.text();
+        if (txt.includes('violates row-level security policy')) {
+          console.warn("Supabase Notice: Run 'ALTER TABLE crochit_messages DISABLE ROW LEVEL SECURITY;' in Supabase SQL editor to enable cross-device messaging.");
+        }
+      }
+    } catch (e) {}
+  },
+
+  // 9. Poll Messages from Supabase Cloud
+  async pollMessages(myId, lastTime) {
+    if (!myId || !this.url || !this.key) return [];
+    if (state.supabaseClient) {
+      try {
+        let qb = state.supabaseClient
+          .from('crochit_messages')
+          .select('*')
+          .or(`receiver_id.eq.${myId},chat_id.like.%${myId}%`);
+        if (lastTime) {
+          qb = qb.gt('created_at', lastTime);
+        }
+        const { data, error } = await qb.order('created_at', { ascending: true });
+        if (data && data.length > 0) return data;
+      } catch (e) {}
+    }
+
+    try {
+      let endpoint = `${this.url}/rest/v1/crochit_messages?select=*&or=(receiver_id.eq.${encodeURIComponent(myId)},chat_id.like.*${encodeURIComponent(myId)}*)&order=created_at.asc`;
+      if (lastTime) {
+        endpoint += `&created_at=gt.${encodeURIComponent(lastTime)}`;
+      }
+      const resp = await fetch(endpoint, {
+        headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data)) return data;
+      }
+    } catch (e) {}
+
+    return [];
+  }
+};
+
 function initCloudDatabase() {
   const activeKey = CROCHIT_CONFIG.supabaseAnonKey;
-  if (CROCHIT_CONFIG.supabaseUrl && activeKey && window.supabase) {
-    try {
-      state.supabaseClient = window.supabase.createClient(
-        CROCHIT_CONFIG.supabaseUrl,
-        activeKey,
-        {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true
+  const initClient = () => {
+    if (CROCHIT_CONFIG.supabaseUrl && activeKey && window.supabase && !state.supabaseClient) {
+      try {
+        state.supabaseClient = window.supabase.createClient(
+          CROCHIT_CONFIG.supabaseUrl,
+          activeKey,
+          {
+            auth: {
+              persistSession: true,
+              autoRefreshToken: true
+            }
           }
-        }
-      );
-      console.log("✓ Crochit Supabase Cloud Database Connected:", CROCHIT_CONFIG.supabaseUrl);
-      const statusEl = document.getElementById('app-conn-status');
-      if (statusEl) statusEl.textContent = "Cloud DB Active";
-    } catch (e) {
-      console.warn("Supabase initialization error:", e);
+        );
+        console.log("✓ Crochit Supabase Cloud Database Connected:", CROCHIT_CONFIG.supabaseUrl);
+        const statusEl = document.getElementById('app-conn-status');
+        if (statusEl) statusEl.textContent = "Cloud DB Active";
+        startRealtimeMessageListeners();
+      } catch (e) {
+        console.warn("Supabase initialization error:", e);
+      }
     }
+  };
+
+  initClient();
+  if (!state.supabaseClient) {
+    let retries = 0;
+    const retryInterval = setInterval(() => {
+      retries++;
+      initClient();
+      if (state.supabaseClient || retries >= 15) {
+        clearInterval(retryInterval);
+      }
+    }, 300);
   }
 }
 
@@ -204,6 +589,7 @@ function initAuthentication() {
     loadUserConversations();
     renderAppUI();
     startRealtimeMessageListeners();
+    CrochitCloudDB.syncCurrentUser();
   } else {
     // Brand new visitor / logged out: Show Sign Up screen immediately!
     // No dummy users, no pre-loaded fake chats
@@ -287,18 +673,31 @@ async function loadUserConversations() {
   }
 
   // If cloud DB is available and local list is empty, fetch saved contacts from cloud
-  if ((!userChats || userChats.length === 0) && state.supabaseClient) {
+  if (!userChats || userChats.length === 0) {
     try {
-      const { data: remoteChats, error } = await state.supabaseClient
-        .from('crochit_user_chats')
-        .select('*')
-        .eq('user_id', state.currentUser.id);
+      let remoteChats = [];
+      if (state.supabaseClient) {
+        const { data } = await state.supabaseClient
+          .from('crochit_user_chats')
+          .select('*')
+          .eq('user_id', state.currentUser.id);
+        if (data) remoteChats = data;
+      }
+      if (remoteChats.length === 0 && CrochitCloudDB.url && CrochitCloudDB.key) {
+        const resp = await fetch(`${CrochitCloudDB.url}/rest/v1/crochit_user_chats?select=*&user_id=eq.${encodeURIComponent(state.currentUser.id)}`, {
+          headers: { 'apikey': CrochitCloudDB.key, 'Authorization': `Bearer ${CrochitCloudDB.key}` }
+        });
+        if (resp.ok) {
+          const list = await resp.json();
+          if (Array.isArray(list)) remoteChats = list;
+        }
+      }
 
       if (remoteChats && remoteChats.length > 0) {
         userChats = remoteChats.map(rc => ({
           id: rc.contact_id ? (rc.contact_id.startsWith('direct_') ? rc.contact_id : getDirectChatId(state.currentUser.id, rc.contact_id)) : rc.id,
           name: rc.contact_name,
-          avatar: rc.contact_avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+          avatar: rc.contact_avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
           otherUserId: rc.contact_id,
           online: true,
           lastSeen: "Active now",
@@ -318,14 +717,10 @@ async function loadUserConversations() {
   }
 
   // Fetch message history from cloud database if available
-  if (state.supabaseClient && state.currentUser) {
+  if (state.currentUser) {
     try {
       const myId = state.currentUser.id;
-      const { data: cloudMsgs } = await state.supabaseClient
-        .from('crochit_messages')
-        .select('*')
-        .or(`receiver_id.eq.${myId},sender_id.eq.${myId}`)
-        .order('created_at', { ascending: true });
+      const cloudMsgs = await CrochitCloudDB.pollMessages(myId, null);
 
       if (cloudMsgs && cloudMsgs.length > 0) {
         cloudMsgs.forEach(cm => {
@@ -335,7 +730,7 @@ async function loadUserConversations() {
             chat = {
               id: cm.chat_id || getDirectChatId(myId, cm.sender_id),
               name: cm.sender_name || 'Contact',
-              avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+              avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
               otherUserId: cm.sender_id,
               online: true,
               lastSeen: "Active now",
@@ -704,49 +1099,27 @@ async function handleAuthSubmit(event) {
     }
 
     // Check if username already exists in cloud Supabase database
-    if (state.supabaseClient) {
-      try {
-        const { data: cloudUserMatch } = await state.supabaseClient
-          .from('crochit_users')
-          .select('id, username')
-          .ilike('username', cleanUsername)
-          .maybeSingle();
-
-        if (cloudUserMatch) {
-          const suggestions = generateUsernameSuggestions(cleanUsername, users);
-          alert(`@${cleanUsername} is already taken in the database! Try: @${suggestions.join(', @')}`);
-          return;
-        }
-      } catch (e) {
-        console.warn("Cloud username lookup notice:", e);
-      }
+    const cloudUsernameTaken = await CrochitCloudDB.checkUsernameTaken(cleanUsername);
+    if (cloudUsernameTaken) {
+      const suggestions = generateUsernameSuggestions(cleanUsername, users);
+      alert(`@${cleanUsername} is already taken in the database! Try: @${suggestions.join(', @')}`);
+      return;
     }
 
     // Check if email already exists locally
-    const existing = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const existing = users.find(u => (u.email || '').toLowerCase() === email.toLowerCase());
     if (existing) {
       alert("An account with this email already exists. Please Sign In.");
       toggleAuthMode('signin');
       return;
     }
 
-    // Check cloud database for email if connected
-    if (state.supabaseClient) {
-      try {
-        const { data: existingCloud } = await state.supabaseClient
-          .from('crochit_users')
-          .select('id')
-          .eq('email', email)
-          .maybeSingle();
-
-        if (existingCloud) {
-          alert("An account with this email already exists in the cloud database. Please Sign In.");
-          toggleAuthMode('signin');
-          return;
-        }
-      } catch (e) {
-        console.warn("Cloud lookup notice:", e);
-      }
+    // Check cloud database for email
+    const cloudEmailTaken = await CrochitCloudDB.checkEmailTaken(email);
+    if (cloudEmailTaken) {
+      alert("An account with this email already exists in the database. Please Sign In.");
+      toggleAuthMode('signin');
+      return;
     }
 
     const newUser = {
@@ -759,24 +1132,21 @@ async function handleAuthSubmit(event) {
       created_at: new Date().toISOString()
     };
 
+    // Save to Cloud DB (Guaranteed with direct REST API fallback)
+    const cloudSaveResult = await CrochitCloudDB.insertUser(newUser);
+    if (!cloudSaveResult.success && !cloudSaveResult.alreadyExists) {
+      alert("Database notice: Could not save account to cloud database (" + (cloudSaveResult.error || "network issue") + "). Please try again.");
+      return;
+    }
+
     // Save to local database
     users.push(newUser);
     localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
 
-    // Save to Supabase Cloud DB
-    if (state.supabaseClient) {
-      try {
-        await state.supabaseClient.from('crochit_users').insert([newUser]);
-        console.log("✓ Saved user to Supabase Cloud Database!");
-      } catch (e) {
-        console.warn("Supabase insert error:", e);
-      }
-    }
-
     // Permanent session persistence (Never expires on browser close/reboot)
     state.currentUser = newUser;
     localStorage.setItem(DB_SESSION_KEY, JSON.stringify(newUser));
-    alert(`Account created successfully! Welcome, ${newUser.username}`);
+    alert(`Account created successfully! Welcome, @${newUser.username}`);
 
   } else {
     // 2. Sign In Mode (Accepts either Username or Email)
@@ -786,23 +1156,12 @@ async function handleAuthSubmit(event) {
       u.password === password
     );
 
-    // If not in local storage and Supabase is configured, check cloud DB
-    if (!foundUser && state.supabaseClient) {
-      try {
-        const { data, error } = await state.supabaseClient
-          .from('crochit_users')
-          .select('*')
-          .or(`email.ilike.${cleanAuthIdentifier},username.ilike.${cleanAuthIdentifier}`)
-          .eq('password', password)
-          .maybeSingle();
-
-        if (data) {
-          foundUser = data;
-          users.push(data);
-          localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
-        }
-      } catch (e) {
-        console.warn("Cloud login query:", e);
+    // If not in local storage, check cloud Supabase DB
+    if (!foundUser) {
+      foundUser = await CrochitCloudDB.loginUser(cleanAuthIdentifier, password);
+      if (foundUser) {
+        users.push(foundUser);
+        localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
       }
     }
 
@@ -811,9 +1170,10 @@ async function handleAuthSubmit(event) {
       return;
     }
 
-    // Permanent session persistence (Never expires until user clicks Sign Out)
+    // Permanent session persistence
     state.currentUser = foundUser;
     localStorage.setItem(DB_SESSION_KEY, JSON.stringify(foundUser));
+    await CrochitCloudDB.syncCurrentUser();
   }
 
   closeAuthModal();
@@ -1198,30 +1558,18 @@ async function dispatchOutgoingMessage(chat, newMsg) {
   } catch (e) {}
 
   // 3. Supabase Cloud Database insert (cross-device delivery)
-  if (state.supabaseClient) {
-    try {
-      state.supabaseClient
-        .from('crochit_messages')
-        .insert([{
-          id: newMsg.id,
-          chat_id: chat.id,
-          sender_id: state.currentUser.id,
-          sender_name: state.currentUser.username,
-          receiver_id: chat.otherUserId || '',
-          text: newMsg.text,
-          image: newMsg.image || null,
-          is_voice_note: !!newMsg.isVoiceNote,
-          status: 'delivered',
-          created_at: newMsg.created_at || new Date().toISOString()
-        }])
-        .then(({ error }) => {
-          if (error) console.warn("Supabase message insert notice:", error);
-          else console.log("✓ Message stored in Supabase cloud database");
-        });
-    } catch (e) {
-      console.warn("Supabase cloud insert notice:", e);
-    }
-  }
+  CrochitCloudDB.sendMessage({
+    id: newMsg.id,
+    chat_id: chat.id,
+    sender_id: state.currentUser.id,
+    sender_name: state.currentUser.username,
+    receiver_id: chat.otherUserId || '',
+    text: newMsg.text,
+    image: newMsg.image || null,
+    is_voice_note: !!newMsg.isVoiceNote,
+    status: 'delivered',
+    created_at: newMsg.created_at || new Date().toISOString()
+  });
 }
 
 async function sendCurrentMessage() {
@@ -1752,10 +2100,13 @@ async function searchUsersInDatabase(query) {
     `;
   }
 
+  // Query Cloud Database & Local Storage via CrochitCloudDB
+  const foundRaw = await CrochitCloudDB.searchUsers(rawQuery);
+
   let matchedUsers = [];
   const seenIds = new Set();
 
-  function addUserResult(u, fromCloud = false) {
+  function addUserResult(u) {
     if (!u || !u.id) return;
     const uid = String(u.id);
     if (seenIds.has(uid)) return;
@@ -1770,100 +2121,21 @@ async function searchUsersInDatabase(query) {
       id: uid,
       username: uname,
       email: uemail,
-      avatar: u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
-      bio: u.bio || "Available on Crochit",
+      avatar: u.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
+      bio: u.bio || "Available on Crochit 🚀",
       isSelf: isSelf,
-      isExact: isExact,
-      fromCloud: fromCloud
+      isExact: isExact
     });
   }
 
-  // 1. Search in local registered users (localStorage)
-  try {
-    const localUsers = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
-    localUsers.forEach(u => {
-      const uName = (u.username || '').toLowerCase().replace(/^@/, '');
-      const uId = String(u.id || '').toLowerCase();
-      const uEmail = (u.email || '').toLowerCase();
-
-      if (!cleanQuery || uName.includes(cleanQuery) || uId.includes(cleanQuery) || uEmail.includes(cleanQuery)) {
-        addUserResult(u, false);
-      }
-    });
-  } catch (e) {
-    console.warn("Local user search notice:", e);
-  }
+  foundRaw.forEach(u => addUserResult(u));
 
   // Also include current user in search results if matched (so they can verify their own ID/username)
   if (state.currentUser) {
     const myName = (state.currentUser.username || '').toLowerCase().replace(/^@/, '');
     const myIdLower = String(state.currentUser.id || '').toLowerCase();
     if (!cleanQuery || myName.includes(cleanQuery) || myIdLower.includes(cleanQuery) || myEmail.includes(cleanQuery)) {
-      addUserResult(state.currentUser, false);
-    }
-  }
-
-  // 2. Search in Supabase Cloud Database (crochit_users)
-  let cloudFetchedUsers = [];
-  if (state.supabaseClient) {
-    try {
-      let queryBuilder = state.supabaseClient
-        .from('crochit_users')
-        .select('id, username, email, avatar, bio');
-
-      if (cleanQuery) {
-        queryBuilder = queryBuilder.or(`username.ilike.%${cleanQuery}%,id.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%`);
-      }
-      const { data, error } = await queryBuilder.limit(40);
-      if (data && data.length > 0) {
-        cloudFetchedUsers = data;
-      }
-    } catch (e) {
-      console.warn("Cloud user search SDK notice:", e);
-    }
-  }
-
-  // Direct REST API fallback if cloud query didn't return or SDK failed
-  if (cloudFetchedUsers.length === 0 && CROCHIT_CONFIG.supabaseUrl && CROCHIT_CONFIG.supabaseAnonKey) {
-    try {
-      const restEndpoint = cleanQuery
-        ? `${CROCHIT_CONFIG.supabaseUrl}/rest/v1/crochit_users?select=id,username,email,avatar,bio&or=(username.ilike.*${encodeURIComponent(cleanQuery)}*,id.ilike.*${encodeURIComponent(cleanQuery)}*,email.ilike.*${encodeURIComponent(cleanQuery)}*)&limit=40`
-        : `${CROCHIT_CONFIG.supabaseUrl}/rest/v1/crochit_users?select=id,username,email,avatar,bio&limit=25`;
-
-      const resp = await fetch(restEndpoint, {
-        headers: {
-          'apikey': CROCHIT_CONFIG.supabaseAnonKey,
-          'Authorization': `Bearer ${CROCHIT_CONFIG.supabaseAnonKey}`
-        }
-      });
-      if (resp.ok) {
-        const json = await resp.json();
-        if (Array.isArray(json) && json.length > 0) {
-          cloudFetchedUsers = json;
-        }
-      }
-    } catch (restErr) {
-      console.warn("REST direct fetch notice:", restErr);
-    }
-  }
-
-  // Merge cloud users and save into local cache
-  if (cloudFetchedUsers.length > 0) {
-    try {
-      const localUsers = JSON.parse(localStorage.getItem(DB_USERS_KEY)) || [];
-      let updatedLocal = false;
-      cloudFetchedUsers.forEach(cu => {
-        addUserResult(cu, true);
-        if (!localUsers.some(lu => lu.id === cu.id)) {
-          localUsers.push(cu);
-          updatedLocal = true;
-        }
-      });
-      if (updatedLocal) {
-        localStorage.setItem(DB_USERS_KEY, JSON.stringify(localUsers));
-      }
-    } catch (syncErr) {
-      console.warn("User caching error:", syncErr);
+      addUserResult(state.currentUser);
     }
   }
 
@@ -2008,20 +2280,16 @@ function startDirectChatWithUser(otherUserId, otherUsername, otherAvatar) {
   saveUserConversations();
 
   // If not self, also sync contact to other user's list in Supabase so they see current user too
-  if (!isSelf && state.supabaseClient) {
-    try {
-      state.supabaseClient.from('crochit_user_chats').upsert([
-        {
-          id: `${otherUserId}_${chatId}`,
-          user_id: otherUserId,
-          contact_id: state.currentUser.id,
-          contact_name: state.currentUser.username,
-          contact_avatar: state.currentUser.avatar,
-          is_group: false,
-          updated_at: new Date()
-        }
-      ]).then(() => console.log("Recipient contact synced in cloud"));
-    } catch (e) {}
+  if (!isSelf) {
+    CrochitCloudDB.syncContact({
+      id: `${otherUserId}_${chatId}`,
+      user_id: otherUserId,
+      contact_id: state.currentUser.id,
+      contact_name: state.currentUser.username,
+      contact_avatar: state.currentUser.avatar || '',
+      is_group: false,
+      updated_at: new Date().toISOString()
+    });
   }
 
   closeNewChatModal();
@@ -2173,16 +2441,11 @@ async function handleIncomingMessage(payload) {
 
 // Background poller for Supabase messages
 async function pollCloudMessages() {
-  if (!state.currentUser || !state.supabaseClient) return;
+  if (!state.currentUser) return;
 
   try {
     const myId = state.currentUser.id;
-    const { data: messages, error } = await state.supabaseClient
-      .from('crochit_messages')
-      .select('*')
-      .or(`receiver_id.eq.${myId},chat_id.like.%${myId}%`)
-      .gt('created_at', lastCloudPollTime)
-      .order('created_at', { ascending: true });
+    const messages = await CrochitCloudDB.pollMessages(myId, lastCloudPollTime);
 
     if (messages && messages.length > 0) {
       for (const msg of messages) {
