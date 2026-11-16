@@ -73,29 +73,47 @@
   </div>
 
   <!-- ==================== TOP NAVIGATION HEADER ==================== -->
-  <header class="h-16 border-b border-white/10 bg-[#111b21] px-4 sm:px-6 flex items-center justify-between shrink-0 z-40">
-    <!-- Brand / Logo -->
-    <div class="flex items-center gap-3 cursor-pointer">
-      <img 
-        src="assets/logo.png" 
-        alt="Crochit" 
-        class="w-9 h-9 rounded-xl object-cover shadow-lg shadow-purple-500/20 border border-purple-500/40"
-      />
-      <div>
-        <div class="flex items-center font-black tracking-tight text-lg leading-tight">
-          <span class="text-white">Cro</span><span class="text-purple-400">chit</span>
-        </div>
-        <div class="flex items-center gap-1.5 text-[10px] text-gray-400">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span id="app-conn-status" class="text-emerald-400 font-semibold">Live Messenger</span>
+  <header class="h-16 border-b border-white/10 bg-[#111b21] px-3 sm:px-6 flex items-center justify-between shrink-0 z-40 gap-3">
+    <!-- Left Area: Brand Logo & Creovate Studio Watermark -->
+    <div class="flex items-center gap-3 sm:gap-4 md:gap-6">
+      <!-- Brand / Logo -->
+      <div class="flex items-center gap-2.5 sm:gap-3 cursor-pointer">
+        <img 
+          src="assets/logo.png" 
+          alt="Crochit" 
+          class="w-9 h-9 rounded-xl object-cover shadow-lg shadow-purple-500/20 border border-purple-500/40"
+        />
+        <div>
+          <div class="flex items-center font-black tracking-tight text-lg leading-tight">
+            <span class="text-white">Cro</span><span class="text-purple-400">chit</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] text-gray-400">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span id="app-conn-status" class="text-emerald-400 font-semibold">Live Messenger</span>
+          </div>
         </div>
       </div>
+
+      <!-- Creovate Studio Watermark & Direct Admin Portal Trigger (Between Crochit and E2EE) -->
+      <button 
+        id="creovate-header-watermark" 
+        onclick="openAdminPanel()" 
+        title="Creovate Studio • Click to open Admin Portal"
+        class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/15 via-purple-500/10 to-pink-500/15 hover:from-cyan-500/30 hover:via-purple-500/20 hover:to-pink-500/30 border border-cyan-400/40 hover:border-cyan-300 text-xs font-bold text-white transition shadow-sm hover:shadow-cyan-500/20 cursor-pointer active:scale-95 group shrink-0"
+      >
+        <img src="assets/creovate_logo.jpg" class="w-5 h-5 rounded-full object-cover border border-cyan-400 group-hover:scale-105 transition" alt="Creovate Studio Logo">
+        <div class="flex items-center gap-1 font-bold text-xs tracking-wide">
+          <span class="text-white">Creovate</span>
+          <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">Studio</span>
+        </div>
+        <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/30 font-mono hidden sm:inline">Admin</span>
+      </button>
     </div>
 
     <!-- Center: Global E2EE Status Badge -->
     <div 
       onclick="openSecurityVerifyModal()"
-      class="hidden sm:flex items-center gap-2 text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-3.5 py-1.5 rounded-full border border-emerald-500/30 cursor-pointer hover:bg-emerald-500/20 transition"
+      class="hidden md:flex items-center gap-2 text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-3.5 py-1.5 rounded-full border border-emerald-500/30 cursor-pointer hover:bg-emerald-500/20 transition shrink-0"
       title="Click to view End-to-End Encryption details"
     >
       <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
@@ -1113,17 +1131,6 @@
         </button>
       </div>
     </div>
-  </div>
-
-  <!-- ==================== PERMANENT CREOVATE STUDIO CORNER WATERMARK ==================== -->
-  <div 
-    id="creovate-corner-watermark" 
-    onclick="openCreovateModal()" 
-    title="Creovate Studio - Design • Web • AI (Click to open)"
-    class="fixed bottom-14 right-3 z-40 flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#111b21]/95 hover:bg-[#18232a] border border-cyan-500/40 hover:border-cyan-400 text-xs font-semibold text-gray-200 shadow-xl backdrop-blur-md cursor-pointer transition transform hover:scale-105"
-  >
-    <img src="assets/creovate_logo.jpg" class="w-5 h-5 rounded-full object-cover border border-cyan-400" alt="Creovate">
-    <span class="font-bold text-[11px] tracking-wide text-cyan-300">Creovate Studio</span>
   </div>
 
   <!-- ==================== MODAL: CREOVATE STUDIO INFO & GATEWAY ==================== -->
