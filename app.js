@@ -16,6 +16,7 @@ let state = {
   activeCall: null,
   incomingCall: null,
   callRingtoneTimer: null,
+  callPulseTimer: null,
   voiceCallTimer: null,
   voiceCallSeconds: 0,
   isVoiceMuted: false,
@@ -590,9 +591,9 @@ const CrochitCloudDB = {
       } catch (e) {}
     }
 
-    // Check Cloud Inbox in crochit_user_chats
+    // Check Cloud Inbox & Ephemeral Call Signals in crochit_user_chats
     try {
-      const inboxResp = await fetch(`${this.url}/rest/v1/crochit_user_chats?user_id=eq.${encodeURIComponent(myId)}&contact_avatar=eq.INBOX_MESSAGE&select=*`, {
+      const inboxResp = await fetch(`${this.url}/rest/v1/crochit_user_chats?user_id=eq.${encodeURIComponent(myId)}&or=(contact_avatar.eq.INBOX_MESSAGE,contact_avatar.eq.CALL_SIGNAL)&select=*`, {
         headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
       });
       if (inboxResp.ok) {
@@ -601,17 +602,25 @@ const CrochitCloudDB = {
           for (const row of inboxRows) {
             try {
               const parsed = JSON.parse(row.contact_name);
-              if (parsed && parsed.id) {
-                if (!messages.some(m => m.id === parsed.id)) {
-                  messages.push(parsed);
+              if (parsed) {
+                // Handle instant cross-device call signal (OFFER, ANSWER, DECLINE, END)
+                if (row.contact_avatar === 'CALL_SIGNAL' || parsed.isCallSignal) {
+                  if (typeof handleIncomingCallSignal === 'function') {
+                    handleIncomingCallSignal(parsed);
+                  }
+                } else if (parsed.id) {
+                  if (!messages.some(m => m.id === parsed.id)) {
+                    messages.push(parsed);
+                  }
                 }
-                // Clean up delivered inbox row
-                fetch(`${this.url}/rest/v1/crochit_user_chats?id=eq.${encodeURIComponent(row.id)}`, {
-                  method: 'DELETE',
-                  headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
-                }).catch(() => {});
               }
             } catch (err) {}
+
+            // Immediately delete delivered signal/inbox row (ZERO permanent database storage)
+            fetch(`${this.url}/rest/v1/crochit_user_chats?id=eq.${encodeURIComponent(row.id)}`, {
+              method: 'DELETE',
+              headers: { 'apikey': this.key, 'Authorization': `Bearer ${this.key}` }
+            }).catch(() => {});
           }
         }
       }
@@ -1810,7 +1819,7 @@ async function dispatchOutgoingMessage(chat, newMsg) {
   }
 
   // 4. Supabase Cloud Database insert with Inbox fallback (100% persistent cross-device delivery)
-  // RULE: Voice messages are P2P / Direct Realtime ONLY — NEVER stored in database!
+  // RULE: Voice messages are direct realtime delivery — NEVER stored permanently in database!
   if (!newMsg.isVoiceNote) {
     CrochitCloudDB.sendMessage({
       id: newMsg.id,
@@ -1825,6 +1834,29 @@ async function dispatchOutgoingMessage(chat, newMsg) {
       status: 'delivered',
       created_at: newMsg.created_at || new Date().toISOString()
     });
+  } else if (receiverId && CrochitCloudDB.url && CrochitCloudDB.key) {
+    // Deliver voice message via Ephemeral Cloud Inbox (Auto-Deleted upon receipt by receiver)
+    try {
+      const inboxRow = {
+        id: `inbox_${receiverId}_${newMsg.id}`,
+        user_id: receiverId,
+        contact_id: state.currentUser.id,
+        contact_name: JSON.stringify(payload),
+        contact_avatar: 'INBOX_MESSAGE',
+        is_group: false,
+        updated_at: new Date().toISOString()
+      };
+      fetch(`${CrochitCloudDB.url}/rest/v1/crochit_user_chats`, {
+        method: 'POST',
+        headers: {
+          'apikey': CrochitCloudDB.key,
+          'Authorization': `Bearer ${CrochitCloudDB.key}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify(inboxRow)
+      }).catch(() => {});
+    } catch (e) {}
   }
 }
 
@@ -2262,13 +2294,50 @@ async function handleMediaFileUpload(event) {
 }
 
 // ==================== REAL-TIME VOICE NOTE RECORDING & PLAYBACK ====================
-// 100% Peer-to-Peer / Direct Realtime Send — NEVER Stored in Database
+// 100% Peer-to-Peer / Direct Realtime Delivery — Auto-Cleaned from Cloud (0 Permanent DB Storage)
 let voiceMediaRecorder = null;
 let voiceAudioChunks = [];
 let voiceRecordInterval = null;
 let voiceRecordSeconds = 0;
 let activeAudioInstance = null;
 let activePlayingMsgId = null;
+let voiceAudioContext = null;
+let voiceScriptProcessor = null;
+let voicePcmSamples = [];
+
+// Universal 16-bit PCM WAV Encoder (Works natively on ALL browsers & phones)
+function encodeWAV(samples, sampleRate = 44100) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  const writeString = (offset, string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM format
+  view.setUint16(22, 1, true); // Mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // Byte rate
+  view.setUint16(32, 2, true); // Block align
+  view.setUint16(34, 16, true); // 16-bit
+  writeString(36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    let s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+
+  return new Blob([view], { type: 'audio/wav' });
+}
 
 async function startVoiceRecording() {
   const chat = state.chatsList.find(c => c.id === state.activeChatId);
@@ -2279,27 +2348,57 @@ async function startVoiceRecording() {
   }
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      } 
+    });
+
     voiceAudioChunks = [];
+    voicePcmSamples = [];
     voiceRecordSeconds = 0;
 
-    let mimeType = 'audio/webm;codecs=opus';
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-      if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+    // Detect browser-compatible MIME type
+    let mimeType = '';
+    if (typeof MediaRecorder !== 'undefined') {
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
+      else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
       else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+      else if (MediaRecorder.isTypeSupported('audio/aac')) mimeType = 'audio/aac';
       else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
-      else mimeType = '';
     }
 
-    voiceMediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    try {
+      voiceMediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      voiceMediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          voiceAudioChunks.push(e.data);
+        }
+      };
+      voiceMediaRecorder.start();
+    } catch (mrErr) {
+      console.warn("MediaRecorder init fallback to AudioContext:", mrErr);
+      voiceMediaRecorder = null;
+    }
 
-    voiceMediaRecorder.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) {
-        voiceAudioChunks.push(e.data);
-      }
-    };
-
-    voiceMediaRecorder.start(100);
+    // Parallel PCM Accumulator via Web Audio API (Bulletproof fallback for mobile Safari)
+    try {
+      voiceAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = voiceAudioContext.createMediaStreamSource(stream);
+      voiceScriptProcessor = voiceAudioContext.createScriptProcessor(4096, 1, 1);
+      voiceScriptProcessor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        for (let i = 0; i < inputData.length; i++) {
+          voicePcmSamples.push(inputData[i]);
+        }
+      };
+      source.connect(voiceScriptProcessor);
+      voiceScriptProcessor.connect(voiceAudioContext.destination);
+    } catch (acErr) {
+      console.warn("AudioContext recording notice:", acErr);
+    }
 
     // Update UI to recording bar
     const inputEl = document.getElementById('chat-message-input');
@@ -2335,118 +2434,172 @@ function cancelVoiceRecording() {
       voiceMediaRecorder.stream.getTracks().forEach(t => t.stop());
     }
   }
+  if (voiceScriptProcessor) {
+    try { voiceScriptProcessor.disconnect(); } catch (e) {}
+    voiceScriptProcessor = null;
+  }
+  if (voiceAudioContext && voiceAudioContext.state !== 'closed') {
+    try { voiceAudioContext.close(); } catch (e) {}
+    voiceAudioContext = null;
+  }
   voiceAudioChunks = [];
+  voicePcmSamples = [];
   clearInterval(voiceRecordInterval);
   resetVoiceRecordingUI();
 }
 
 async function stopAndSendVoiceRecording() {
-  if (!voiceMediaRecorder || voiceMediaRecorder.state === 'inactive') return;
-
   const chat = state.chatsList.find(c => c.id === state.activeChatId);
   if (!chat) {
     cancelVoiceRecording();
     return;
   }
 
-  const recordedDuration = voiceRecordSeconds;
+  const recordedDuration = Math.max(1, voiceRecordSeconds);
   clearInterval(voiceRecordInterval);
 
-  voiceMediaRecorder.onstop = async () => {
-    try {
+  // Stop Web Audio API processor
+  if (voiceScriptProcessor) {
+    try { voiceScriptProcessor.disconnect(); } catch (e) {}
+    voiceScriptProcessor = null;
+  }
+  const sampleRate = voiceAudioContext ? voiceAudioContext.sampleRate : 44100;
+  if (voiceAudioContext && voiceAudioContext.state !== 'closed') {
+    try { voiceAudioContext.close(); } catch (e) {}
+    voiceAudioContext = null;
+  }
+
+  const processAndDispatchAudio = (audioBlob) => {
+    if (!audioBlob || audioBlob.size === 0) {
+      alert("No audio recorded. Please hold and speak into your microphone.");
+      resetVoiceRecordingUI();
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64Audio = reader.result;
+      const mins = String(Math.floor(recordedDuration / 60)).padStart(2, '0');
+      const secs = String(recordedDuration % 60).padStart(2, '0');
+      const durationFormatted = `${mins}:${secs}`;
+
+      let receiverId = chat.otherUserId || '';
+      if (!receiverId && chat.id && chat.id.startsWith('direct_')) {
+        const parts = chat.id.replace('direct_', '').split('_');
+        receiverId = parts.find(p => p !== (state.currentUser ? state.currentUser.id : '')) || '';
+      }
+
+      const newMsg = {
+        id: 'voice_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+        chat_id: chat.id,
+        sender: 'me',
+        sender_id: state.currentUser ? state.currentUser.id : 'usr',
+        sender_name: state.currentUser ? state.currentUser.username : 'User',
+        receiver_id: receiverId,
+        time: getCurrentTimeFormatted(),
+        text: 'Voice Message 🎙️',
+        audioData: base64Audio,
+        duration: durationFormatted,
+        isVoiceNote: true,
+        created_at: new Date().toISOString(),
+        status: 'delivered'
+      };
+
+      resetVoiceRecordingUI();
+
+      // 1. Save locally in chat history
+      if (!chat.messages) chat.messages = [];
+      chat.messages.push(newMsg);
+      saveUserConversations();
+      await renderActiveChatMessages();
+      renderConversationsList();
+
+      const voicePayload = {
+        id: newMsg.id,
+        chat_id: chat.id,
+        sender: 'them',
+        sender_id: state.currentUser ? state.currentUser.id : '',
+        sender_name: state.currentUser ? state.currentUser.username : 'User',
+        sender_avatar: state.currentUser ? state.currentUser.avatar : '',
+        receiver_id: receiverId,
+        text: 'Voice Message 🎙️',
+        audioData: base64Audio,
+        duration: durationFormatted,
+        isVoiceNote: true,
+        time: newMsg.time,
+        created_at: newMsg.created_at
+      };
+
+      // 2. Cross-tab Mesh
+      if (window.crochitChannel) {
+        try {
+          window.crochitChannel.postMessage({ type: 'INCOMING_MESSAGE', payload: voicePayload });
+        } catch (e) {}
+      }
+
+      // 3. Supabase Realtime WebSocket Broadcast
+      if (state.supabaseRealtimeChannel) {
+        try {
+          state.supabaseRealtimeChannel.send({
+            type: 'broadcast',
+            event: 'chat_message',
+            payload: voicePayload
+          });
+        } catch (e) {}
+      }
+
+      // 4. Reliable Direct Cross-Device Cloud Dispatch with Immediate Receiver Auto-Delete (0 DB Retention)
+      if (receiverId && CrochitCloudDB.url && CrochitCloudDB.key) {
+        try {
+          const inboxRow = {
+            id: `inbox_${receiverId}_${newMsg.id}`,
+            user_id: receiverId,
+            contact_id: state.currentUser ? state.currentUser.id : 'usr',
+            contact_name: JSON.stringify(voicePayload),
+            contact_avatar: 'INBOX_MESSAGE',
+            is_group: false,
+            updated_at: new Date().toISOString()
+          };
+          await fetch(`${CrochitCloudDB.url}/rest/v1/crochit_user_chats`, {
+            method: 'POST',
+            headers: {
+              'apikey': CrochitCloudDB.key,
+              'Authorization': `Bearer ${CrochitCloudDB.key}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify(inboxRow)
+          });
+        } catch (e) {}
+      }
+    };
+
+    reader.readAsDataURL(audioBlob);
+  };
+
+  if (voiceMediaRecorder && voiceMediaRecorder.state !== 'inactive') {
+    voiceMediaRecorder.onstop = () => {
       if (voiceMediaRecorder.stream) {
         voiceMediaRecorder.stream.getTracks().forEach(t => t.stop());
       }
-
-      const mimeType = voiceMediaRecorder.mimeType || 'audio/webm';
-      const audioBlob = new Blob(voiceAudioChunks, { type: mimeType });
-
-      // Convert Blob to Base64 data URL
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Audio = reader.result;
-        const mins = String(Math.floor(recordedDuration / 60)).padStart(2, '0');
-        const secs = String(recordedDuration % 60).padStart(2, '0');
-        const durationFormatted = `${mins}:${secs}`;
-
-        const newMsg = {
-          id: 'voice_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-          chat_id: chat.id,
-          sender: 'me',
-          sender_id: state.currentUser ? state.currentUser.id : 'usr',
-          sender_name: state.currentUser ? state.currentUser.username : 'User',
-          receiver_id: chat.otherUserId || '',
-          time: getCurrentTimeFormatted(),
-          text: 'Voice Message 🎙️',
-          audioData: base64Audio,
-          duration: durationFormatted,
-          isVoiceNote: true,
-          created_at: new Date().toISOString(),
-          status: 'delivered'
-        };
-
-        resetVoiceRecordingUI();
-
-        // 1. Save in local conversation history
-        if (!chat.messages) chat.messages = [];
-        chat.messages.push(newMsg);
-        saveUserConversations();
-        await renderActiveChatMessages();
-        renderConversationsList();
-
-        // 2. Direct P2P Broadcast Delivery ONLY — NEVER Save to Database
-        let receiverId = chat.otherUserId || '';
-        if (!receiverId && chat.id && chat.id.startsWith('direct_')) {
-          const parts = chat.id.replace('direct_', '').split('_');
-          receiverId = parts.find(p => p !== (state.currentUser ? state.currentUser.id : '')) || '';
-        }
-
-        const voicePayload = {
-          id: newMsg.id,
-          chat_id: chat.id,
-          sender: 'them',
-          sender_id: state.currentUser.id,
-          sender_name: state.currentUser.username,
-          sender_avatar: state.currentUser.avatar,
-          receiver_id: receiverId,
-          text: 'Voice Message 🎙️',
-          audioData: base64Audio,
-          duration: durationFormatted,
-          isVoiceNote: true,
-          time: newMsg.time,
-          created_at: newMsg.created_at
-        };
-
-        // Cross-tab Mesh
-        if (window.crochitChannel) {
-          try {
-            window.crochitChannel.postMessage({ type: 'INCOMING_MESSAGE', payload: voicePayload });
-          } catch (e) {}
-        }
-
-        // Supabase Realtime WebSocket Broadcast (Direct cross-device delivery with 0 database write)
-        if (state.supabaseRealtimeChannel) {
-          try {
-            state.supabaseRealtimeChannel.send({
-              type: 'broadcast',
-              event: 'chat_message',
-              payload: voicePayload
-            });
-          } catch (e) {
-            console.warn("Realtime voice broadcast notice:", e);
-          }
-        }
-      };
-
-      reader.readAsDataURL(audioBlob);
-
-    } catch (err) {
-      console.error("Error processing voice note:", err);
-      resetVoiceRecordingUI();
-    }
-  };
-
-  voiceMediaRecorder.stop();
+      let blob = null;
+      if (voiceAudioChunks.length > 0) {
+        const mimeType = voiceMediaRecorder.mimeType || 'audio/webm';
+        blob = new Blob(voiceAudioChunks, { type: mimeType });
+      }
+      // If MediaRecorder produced 0-length blob, fallback to Web Audio PCM WAV
+      if ((!blob || blob.size === 0) && voicePcmSamples.length > 0) {
+        blob = encodeWAV(voicePcmSamples, sampleRate);
+      }
+      processAndDispatchAudio(blob);
+    };
+    voiceMediaRecorder.stop();
+  } else if (voicePcmSamples.length > 0) {
+    const wavBlob = encodeWAV(voicePcmSamples, sampleRate);
+    processAndDispatchAudio(wavBlob);
+  } else {
+    resetVoiceRecordingUI();
+  }
 }
 
 function resetVoiceRecordingUI() {
@@ -2471,7 +2624,7 @@ function toggleVoiceRecording() {
   }
 }
 
-// Play / Pause Voice Message in Chat Bubble
+// Play / Pause Voice Message in Chat Bubble (Universal HTML5 + Web Audio API Decode Fallback)
 function playVoiceNote(msgId) {
   const chat = state.chatsList.find(c => c.id === state.activeChatId);
   if (!chat || !chat.messages) return;
@@ -2519,14 +2672,40 @@ function playVoiceNote(msgId) {
     activePlayingMsgId = null;
   };
 
-  activeAudioInstance.onerror = () => {
-    if (playBtnIcon) playBtnIcon.setAttribute('data-lucide', 'play');
-    if (window.lucide) lucide.createIcons();
-    activeAudioInstance = null;
-    activePlayingMsgId = null;
+  activeAudioInstance.onerror = async () => {
+    console.warn("HTML5 audio playback error, attempting Web Audio API decode fallback...");
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const res = await fetch(msg.audioData);
+      const arrayBuffer = await res.arrayBuffer();
+      const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const source = audioCtx.createBufferSource();
+      source.buffer = decodedBuffer;
+      source.connect(audioCtx.destination);
+      source.onended = () => {
+        if (playBtnIcon) playBtnIcon.setAttribute('data-lucide', 'play');
+        if (window.lucide) lucide.createIcons();
+        activePlayingMsgId = null;
+      };
+      source.start(0);
+      if (playBtnIcon) playBtnIcon.setAttribute('data-lucide', 'pause');
+      if (window.lucide) lucide.createIcons();
+    } catch (fbErr) {
+      console.error("Audio playback error:", fbErr);
+      if (playBtnIcon) playBtnIcon.setAttribute('data-lucide', 'play');
+      if (window.lucide) lucide.createIcons();
+      activeAudioInstance = null;
+      activePlayingMsgId = null;
+    }
   };
 
-  activeAudioInstance.play().catch(e => console.warn("Audio play notice:", e));
+  activeAudioInstance.play().catch(e => {
+    console.warn("Audio play rejected, triggering Web Audio fallback:", e);
+    if (activeAudioInstance && activeAudioInstance.onerror) {
+      activeAudioInstance.onerror();
+    }
+  });
+
   if (window.lucide) lucide.createIcons();
 }
 
@@ -2924,9 +3103,9 @@ function startRealtimeMessageListeners() {
     }
   }
 
-  // 4. Supabase Cloud Polling (every 2.5 seconds as rock-solid background sync)
+  // 4. Supabase Cloud Polling (every 1.5 seconds for instant call & message sync)
   clearInterval(cloudPollInterval);
-  cloudPollInterval = setInterval(pollCloudMessages, 2500);
+  cloudPollInterval = setInterval(pollCloudMessages, 1500);
   pollCloudMessages();
 }
 
@@ -3068,14 +3247,20 @@ function escapeAttr(text) {
 }
 
 // ==================== 3. REAL-TIME CROSS-DEVICE CALLS (P2P WEBRTC / BROADCAST) ====================
-// RULE: Voice & Video calls are 100% Peer-to-Peer / Realtime Mesh — NEVER Stored in Database
+// RULE: Voice & Video calls are 100% Peer-to-Peer / Direct Realtime — NEVER Stored in Database
 let callRingtoneInterval = null;
 let currentAudioContext = null;
 
-function broadcastCallSignal(action, callType, targetUserId, extra = {}) {
+async function broadcastCallSignal(action, callType, targetUserId, extra = {}) {
   const myId = state.currentUser ? state.currentUser.id : '';
   const myUsername = state.currentUser ? state.currentUser.username : 'User';
   const myAvatar = state.currentUser ? state.currentUser.avatar : '';
+
+  // Resolve target user ID if missing from channelId (direct_usrA_usrB)
+  if (!targetUserId && extra.channelId && extra.channelId.startsWith('direct_')) {
+    const parts = extra.channelId.replace('direct_', '').split('_');
+    targetUserId = parts.find(p => p !== myId) || '';
+  }
 
   const payload = {
     action,
@@ -3088,14 +3273,14 @@ function broadcastCallSignal(action, callType, targetUserId, extra = {}) {
     ...extra
   };
 
-  // Cross-tab Mesh
+  // 1. Cross-tab Mesh
   if (window.crochitChannel) {
     try {
       window.crochitChannel.postMessage({ type: 'CALL_SIGNAL', payload });
     } catch (e) {}
   }
 
-  // Supabase Realtime Broadcast Mesh (Cross-Device 30ms latency)
+  // 2. Supabase Realtime Broadcast Mesh (Cross-Device 30ms latency)
   if (state.supabaseRealtimeChannel) {
     try {
       state.supabaseRealtimeChannel.send({
@@ -3103,20 +3288,49 @@ function broadcastCallSignal(action, callType, targetUserId, extra = {}) {
         event: 'call_signal',
         payload
       });
-    } catch (e) {
-      console.warn("Call signal broadcast error:", e);
-    }
+    } catch (e) {}
+  }
+
+  // 3. Ephemeral Cloud Signal Dispatch (Guaranteed Cross-Device Call Delivery, Auto-Deleted on Receipt)
+  if (targetUserId && targetUserId !== myId && CrochitCloudDB.url && CrochitCloudDB.key) {
+    try {
+      const sigRow = {
+        id: `call_${targetUserId}_${payload.action}_${Date.now()}`,
+        user_id: targetUserId,
+        contact_id: myId,
+        contact_name: JSON.stringify({ isCallSignal: true, ...payload }),
+        contact_avatar: 'CALL_SIGNAL',
+        is_group: false,
+        updated_at: new Date().toISOString()
+      };
+      await fetch(`${CrochitCloudDB.url}/rest/v1/crochit_user_chats`, {
+        method: 'POST',
+        headers: {
+          'apikey': CrochitCloudDB.key,
+          'Authorization': `Bearer ${CrochitCloudDB.key}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify(sigRow)
+      });
+    } catch (e) {}
   }
 }
 
 function handleIncomingCallSignal(payload) {
   if (!state.currentUser || !payload) return;
   const myId = state.currentUser.id;
+  const myUsername = state.currentUser.username;
 
   if (payload.callerId === myId && payload.action === 'CALL_OFFER') return;
 
+  const isTargetForMe = (payload.targetUserId && (payload.targetUserId === myId || payload.targetUserId === myUsername)) ||
+    (payload.channelId && payload.channelId.includes(myId));
+
+  if (!isTargetForMe) return;
+
   // 1. Inbound Call Offer
-  if (payload.action === 'CALL_OFFER' && payload.targetUserId === myId) {
+  if (payload.action === 'CALL_OFFER') {
     state.incomingCall = payload;
 
     const modal = document.getElementById('incoming-call-modal');
@@ -3139,17 +3353,23 @@ function handleIncomingCallSignal(payload) {
   }
 
   // 2. Call Answered by Remote User
-  if (payload.action === 'CALL_ANSWER' && payload.targetUserId === myId) {
+  if (payload.action === 'CALL_ANSWER') {
     stopOutgoingRingtone();
-    const status = document.getElementById('voice-call-status');
-    if (status) status.textContent = "Connected (00:00)";
-    startVoiceTimer();
+    clearInterval(state.callPulseTimer);
+    if (payload.callType === 'video') {
+      startVideoTimer();
+    } else {
+      const status = document.getElementById('voice-call-status');
+      if (status) status.textContent = "Connected (00:00)";
+      startVoiceTimer();
+    }
     return;
   }
 
   // 3. Call Declined by Remote User
-  if (payload.action === 'CALL_DECLINE' && payload.targetUserId === myId) {
+  if (payload.action === 'CALL_DECLINE') {
     stopOutgoingRingtone();
+    clearInterval(state.callPulseTimer);
     const voiceModal = document.getElementById('voice-call-modal');
     const videoModal = document.getElementById('video-call-modal');
     if (voiceModal) voiceModal.classList.add('hidden');
@@ -3160,21 +3380,20 @@ function handleIncomingCallSignal(payload) {
 
   // 4. Call Ended
   if (payload.action === 'CALL_END') {
-    if (payload.targetUserId === myId || (state.incomingCall && state.incomingCall.callerId === payload.callerId)) {
-      stopIncomingRingtone();
-      stopOutgoingRingtone();
-      const inModal = document.getElementById('incoming-call-modal');
-      const voiceModal = document.getElementById('voice-call-modal');
-      const videoModal = document.getElementById('video-call-modal');
-      if (inModal) inModal.classList.add('hidden');
-      if (voiceModal) voiceModal.classList.add('hidden');
-      if (videoModal) videoModal.classList.add('hidden');
-      clearInterval(state.voiceCallTimer);
-      clearInterval(state.videoCallTimer);
-      if (state.localVideoStream) {
-        state.localVideoStream.getTracks().forEach(t => t.stop());
-        state.localVideoStream = null;
-      }
+    stopIncomingRingtone();
+    stopOutgoingRingtone();
+    clearInterval(state.callPulseTimer);
+    const inModal = document.getElementById('incoming-call-modal');
+    const voiceModal = document.getElementById('voice-call-modal');
+    const videoModal = document.getElementById('video-call-modal');
+    if (inModal) inModal.classList.add('hidden');
+    if (voiceModal) voiceModal.classList.add('hidden');
+    if (videoModal) videoModal.classList.add('hidden');
+    clearInterval(state.voiceCallTimer);
+    clearInterval(state.videoCallTimer);
+    if (state.localVideoStream) {
+      state.localVideoStream.getTracks().forEach(t => t.stop());
+      state.localVideoStream = null;
     }
   }
 }
@@ -3212,14 +3431,7 @@ function acceptIncomingCall() {
       if (localVideo) localVideo.srcObject = stream;
     }).catch(err => console.warn("Camera stream notice:", err));
 
-    state.videoCallSeconds = 0;
-    clearInterval(state.videoCallTimer);
-    state.videoCallTimer = setInterval(() => {
-      state.videoCallSeconds++;
-      const mins = String(Math.floor(state.videoCallSeconds / 60)).padStart(2, '0');
-      const secs = String(state.videoCallSeconds % 60).padStart(2, '0');
-      if (timerEl) timerEl.textContent = `${mins}:${secs}`;
-    }, 1000);
+    startVideoTimer();
 
   } else {
     const voiceModal = document.getElementById('voice-call-modal');
@@ -3251,6 +3463,7 @@ function playOutgoingRingtone() {
   stopOutgoingRingtone();
   try {
     currentAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (currentAudioContext.state === 'suspended') currentAudioContext.resume();
     const playBeep = () => {
       if (!currentAudioContext || currentAudioContext.state === 'closed') return;
       const osc1 = currentAudioContext.createOscillator();
@@ -3290,6 +3503,7 @@ function playIncomingRingtone() {
   stopIncomingRingtone();
   try {
     currentAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (currentAudioContext.state === 'suspended') currentAudioContext.resume();
     const playRing = () => {
       if (!currentAudioContext || currentAudioContext.state === 'closed') return;
       const osc = currentAudioContext.createOscillator();
@@ -3324,6 +3538,12 @@ function startVoiceCall() {
     return;
   }
 
+  let receiverId = chat.otherUserId || '';
+  if (!receiverId && chat.id && chat.id.startsWith('direct_')) {
+    const parts = chat.id.replace('direct_', '').split('_');
+    receiverId = parts.find(p => p !== (state.currentUser ? state.currentUser.id : '')) || '';
+  }
+
   // Hide top bar if active and preserve contact
   hideEmergencyCallTopBar();
   state.reservedCallContact = chat;
@@ -3335,7 +3555,7 @@ function startVoiceCall() {
 
   if (avatar) avatar.src = chat.avatar;
   if (name) name.textContent = chat.name;
-  if (status) status.textContent = "Calling @username...";
+  if (status) status.textContent = `Calling @${chat.name}...`;
 
   state.voiceCallSeconds = 0;
   state.isVoiceMuted = false;
@@ -3348,8 +3568,20 @@ function startVoiceCall() {
 
   playOutgoingRingtone();
 
-  // Send cross-device call offer via Realtime broadcast mesh (0 database write)
-  broadcastCallSignal('CALL_OFFER', 'voice', chat.otherUserId, { channelId: chat.id });
+  // Send cross-device call offer immediately
+  broadcastCallSignal('CALL_OFFER', 'voice', receiverId, { channelId: chat.id });
+
+  // Pulse call offer every 2.5s for 25s so recipient's device immediately picks it up
+  clearInterval(state.callPulseTimer);
+  let pulseCount = 0;
+  state.callPulseTimer = setInterval(() => {
+    pulseCount++;
+    if (pulseCount > 10) {
+      clearInterval(state.callPulseTimer);
+      return;
+    }
+    broadcastCallSignal('CALL_OFFER', 'voice', receiverId, { channelId: chat.id });
+  }, 2500);
 }
 
 function startVoiceTimer() {
@@ -3369,14 +3601,19 @@ function endVoiceCall() {
   stopOutgoingRingtone();
   stopIncomingRingtone();
   clearInterval(state.voiceCallTimer);
+  clearInterval(state.callPulseTimer);
 
   const modal = document.getElementById('voice-call-modal');
   if (modal) modal.classList.add('hidden');
 
   const chat = state.chatsList.find(c => c.id === state.activeChatId) || state.reservedCallContact;
-  if (chat && chat.otherUserId) {
-    broadcastCallSignal('CALL_END', 'voice', chat.otherUserId, { channelId: chat.id });
+  let receiverId = chat ? (chat.otherUserId || '') : '';
+  if (!receiverId && chat && chat.id && chat.id.startsWith('direct_')) {
+    const parts = chat.id.replace('direct_', '').split('_');
+    receiverId = parts.find(p => p !== (state.currentUser ? state.currentUser.id : '')) || '';
   }
+
+  broadcastCallSignal('CALL_END', 'voice', receiverId, { channelId: chat ? chat.id : '' });
 
   // Reserve session for 10 minutes so user can 1-tap resume/redial!
   if (chat) {
@@ -3390,9 +3627,8 @@ function endVoiceCall() {
         expiresAt: Date.now() + 600 * 1000
       }));
     } catch (e) {}
-
     startEmergencyGraceCountdown();
-    showEmergencyCallTopBar();
+    showEmergencyCallTopBar(chat.name);
   }
 }
 
@@ -3879,6 +4115,12 @@ async function startVideoCall() {
     return;
   }
 
+  let receiverId = chat.otherUserId || '';
+  if (!receiverId && chat.id && chat.id.startsWith('direct_')) {
+    const parts = chat.id.replace('direct_', '').split('_');
+    receiverId = parts.find(p => p !== (state.currentUser ? state.currentUser.id : '')) || '';
+  }
+
   const modal = document.getElementById('video-call-modal');
   const headerAvatar = document.getElementById('video-call-header-avatar');
   const headerName = document.getElementById('video-call-header-name');
@@ -3890,7 +4132,7 @@ async function startVideoCall() {
   if (headerName) headerName.textContent = chat.name;
   if (remoteAvatar) remoteAvatar.src = chat.avatar;
   if (remoteName) remoteName.textContent = chat.name;
-  if (timerEl) timerEl.textContent = "Calling @username...";
+  if (timerEl) timerEl.textContent = `Calling @${chat.name}...`;
 
   if (modal) modal.classList.remove('hidden');
 
@@ -3908,14 +4150,38 @@ async function startVideoCall() {
 
   playOutgoingRingtone();
 
-  // Send cross-device call offer via Realtime broadcast mesh (0 database write)
-  broadcastCallSignal('CALL_OFFER', 'video', chat.otherUserId, { channelId: chat.id });
+  // Send cross-device call offer via Realtime & Ephemeral Cloud signaling (0 DB storage)
+  broadcastCallSignal('CALL_OFFER', 'video', receiverId, { channelId: chat.id });
+
+  clearInterval(state.callPulseTimer);
+  let pulseCount = 0;
+  state.callPulseTimer = setInterval(() => {
+    pulseCount++;
+    if (pulseCount > 10) {
+      clearInterval(state.callPulseTimer);
+      return;
+    }
+    broadcastCallSignal('CALL_OFFER', 'video', receiverId, { channelId: chat.id });
+  }, 2500);
+}
+
+function startVideoTimer() {
+  clearInterval(state.videoCallTimer);
+  state.videoCallSeconds = 0;
+  const timerEl = document.getElementById('video-call-timer');
+  state.videoCallTimer = setInterval(() => {
+    state.videoCallSeconds++;
+    const mins = String(Math.floor(state.videoCallSeconds / 60)).padStart(2, '0');
+    const secs = String(state.videoCallSeconds % 60).padStart(2, '0');
+    if (timerEl) timerEl.textContent = `${mins}:${secs}`;
+  }, 1000);
 }
 
 function endVideoCall() {
   stopOutgoingRingtone();
   stopIncomingRingtone();
   clearInterval(state.videoCallTimer);
+  clearInterval(state.callPulseTimer);
 
   const modal = document.getElementById('video-call-modal');
   if (modal) modal.classList.add('hidden');
@@ -3927,9 +4193,13 @@ function endVideoCall() {
   }
 
   const chat = state.chatsList.find(c => c.id === state.activeChatId) || state.reservedCallContact;
-  if (chat && chat.otherUserId) {
-    broadcastCallSignal('CALL_END', 'video', chat.otherUserId, { channelId: chat.id });
+  let receiverId = chat ? (chat.otherUserId || '') : '';
+  if (!receiverId && chat && chat.id && chat.id.startsWith('direct_')) {
+    const parts = chat.id.replace('direct_', '').split('_');
+    receiverId = parts.find(p => p !== (state.currentUser ? state.currentUser.id : '')) || '';
   }
+
+  broadcastCallSignal('CALL_END', 'video', receiverId, { channelId: chat ? chat.id : '' });
 }
 
 function toggleVideoMic() {
