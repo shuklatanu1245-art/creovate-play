@@ -4159,7 +4159,7 @@ function handleAdminPasscodeSubmit(e) {
   const dash = document.getElementById('admin-dashboard-content');
 
   const val = input ? input.value.trim() : '';
-  if (val === 'creovate2026' || val === 'admin123' || val === 'creovate') {
+  if (val === 'Create5454') {
     state.isAdminUnlocked = true;
     if (gate) gate.classList.add('hidden');
     if (dash) dash.classList.remove('hidden');
@@ -4167,7 +4167,7 @@ function handleAdminPasscodeSubmit(e) {
     populateAdminAdFields();
   } else {
     if (errEl) {
-      errEl.textContent = "Incorrect Passcode. Try: creovate2026";
+      errEl.textContent = "Incorrect Passcode";
       errEl.classList.remove('hidden');
     }
   }
